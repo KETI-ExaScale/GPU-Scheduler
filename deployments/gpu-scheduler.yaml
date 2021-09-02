@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: gpu-scheduler
+  name: gpu-scheduler
+  namespace: gpu
+spec:
+  selector:
+    matchLabels:
+      app: gpu-scheduler
+  template:
+    metadata:
+      labels:
+        app: gpu-scheduler
+      name: gpu-scheduler
+    spec:
+      nodeName: master
+      serviceAccountName: scheduler
+      containers:
+        - name: gpu-scheduler
+          image: ketidevit/gpu-scheduler:v0.1
+          volumeMounts:
+            - name: tz-config
+              mountPath: /etc/localtime
+      volumes:
+        - name: tz-config
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Seoul
+
+            

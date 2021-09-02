@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx
+  name: nginx
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      annotations:
+        test: testdata
+      labels:
+        app: nginx
+      name: nginx
+    spec:
+      schedulerName: gpu-scheduler
+      containers:
+        - name: nginx
+          image: "nginx:1.11.1-alpine"
+          ports:
+          - containerPort: 80
+          resources:
+            requests:
+              cpu: "125m"
+              memory: "128M"

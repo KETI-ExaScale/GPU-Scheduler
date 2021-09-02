@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nbody-benchmark-mps-one
+  namespace: userpod
+spec:
+  parallelism: 3
+  template:
+    spec:
+      hostIPC: true
+      schedulerName: gpu-scheduler
+      #nodeSelector:
+      #  k8s.amazonaws.com/accelerator: vgpu
+      containers:
+        - image: seedjeffwan/nbody:cuda-10.1
+          name: nbody1
+          args:
+            - nbody
+            - -benchmark
+            - -numdevices=1
+            - -numbodies=812000
+          resources:
+            limits:
+              #nvidia.com/gpu: 1
+              #k8s.amazonaws.com/vgpu: 1
+              keti.com/mpsgpu: 1
+          volumeMounts:
+            - name: nvidia-mps
+              mountPath: /tmp/nvidia-mps
+      volumes:
+        - name: nvidia-mps
+          hostPath:
+            path: /tmp/nvidia-mps
+      restartPolicy: Never
