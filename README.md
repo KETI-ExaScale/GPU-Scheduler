@@ -83,3 +83,4 @@ kubectl create -f deployments/scheduler.yaml
 ``` 
 deployment "scheduler" created
 ```
+# GPU-Scheduler
