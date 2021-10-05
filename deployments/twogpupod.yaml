@@ -4,7 +4,7 @@ metadata:
   name: nbody-benchmark-mps-two
   namespace: userpod
 spec:
-  parallelism: 2
+  #parallelism: 2
   template:
     spec:
       hostIPC: true

@@ -17,62 +17,57 @@ import (
 	"fmt"
 
 	resource "gpu-scheduler/resourceinfo"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
-type NodePrice struct {
-	BestNode  *resource.NodeInfo
-	NodeScore float64
-}
+// type NodePrice struct {
+// 	BestNode  *resource.NodeInfo
+// 	NodeScore int
+// }
 
-func Scoring(nodeInfoList []*resource.NodeInfo, newPod *corev1.Pod) (*resource.NodeInfo, error) {
-	fmt.Println("2. Scoring Stage")
+func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resource.NodeInfo, error) {
+	fmt.Println("[step 2] Scoring Stage")
 
-	var bestPriceNode *NodePrice
-
-	//debugging
-	fmt.Print("-Before Scoring Nodes")
-	for _, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			fmt.Print(" | ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-		}
-	}
-	fmt.Println()
-
-	err := MetricBasedScoring(nodeInfoList)
-	if err != nil {
-		fmt.Println("scoring>metricBasedScoring error: ", err)
-		return &resource.NodeInfo{}, err
-	}
+	//var bestPriceNode *NodePrice
 
 	//debugging
-	fmt.Print("-After Scoring Nodes")
-	for _, nodeinfo := range nodeInfoList {
+	fmt.Print(" |Before Scoring Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			fmt.Print(" | ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-		}
-	}
-	fmt.Println()
-
-	for _, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if bestPriceNode == nil {
-				bestPriceNode = &NodePrice{nodeinfo, nodeinfo.NodeScore}
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
 				continue
 			}
-			if nodeinfo.NodeScore > bestPriceNode.NodeScore {
-				bestPriceNode.BestNode = nodeinfo
-				bestPriceNode.NodeScore = nodeinfo.NodeScore
-			}
+			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
 		}
 	}
+	fmt.Println()
 
-	if bestPriceNode == nil {
-		bestPriceNode = &NodePrice{nodeInfoList[0], 0}
+	//1. LeastGPUMemory
+	err := LeastGPUMemory(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("scoring>metricBasedScoring error: ", err)
+		return nodeInfoList, err
 	}
 
-	fmt.Println("BestNode: ", bestPriceNode.BestNode.NodeName)
+	//2. CheckGPUAvailable
+	err = MetricBasedScoring(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("scoring>metricBasedScoring error: ", err)
+		return nodeInfoList, err
+	}
 
-	return bestPriceNode.BestNode, nil
+	//debugging
+	fmt.Print(" |After Scoring Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
+		if !nodeinfo.IsFiltered {
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+				continue
+			}
+			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+		}
+	}
+	fmt.Println()
+
+	return nodeInfoList, nil
 }

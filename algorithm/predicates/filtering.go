@@ -17,47 +17,65 @@ import (
 	"fmt"
 
 	resource "gpu-scheduler/resourceinfo"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
-func Filtering(newPod *corev1.Pod) ([]*resource.NodeInfo, error) {
-	fmt.Println("1. Filtering statge")
-
-	//새 파드 필터링 전 노드 정보 업데이트
-	var NodeInfoList []*resource.NodeInfo
-	var NodeMetricList []*resource.NodeMetric
-	NodeInfoList, NodeMetricList, err := resource.NodeUpdate(NodeInfoList, NodeMetricList)
-	if err != nil {
-		fmt.Println("Filtering>nodeUpdate error: ", err)
-		return nil, err
-	}
+func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*resource.NodeInfo, error) {
+	fmt.Println("[step 1] Filtering statge")
 
 	//debugging
-	fmt.Print("-Before Filtering Nodes")
-	for _, nodeinfo := range NodeInfoList {
+	fmt.Print(" |Before Filtering Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			fmt.Print(" | ", nodeinfo.NodeName)
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName)
+				continue
+			}
+			fmt.Print(" , ", nodeinfo.NodeName)
 		}
 	}
 	fmt.Println()
 
-	//1. PodFitsResourcesAndGPU
-	err = PodFitsResourcesAndGPU(NodeInfoList, newPod)
+	//1. PodFitsHost
+	err := PodFitsHost(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>PodFitsHost error: ", err)
+		return nil, err
+	}
+
+	//2. CheckGPUAvailable
+	err = CheckGPUAvailable(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>CheckGPUAvailable error: ", err)
+		return nil, err
+	}
+
+	//3. PodFitsResourcesAndGPU
+	err = PodFitsRequestedResources(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>PodFitsResourcesAndGPU error: ", err)
 		return nil, err
 	}
 
+	//4. PodFitsHostPorts
+	err = PodFitsHostPorts(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>PodFitsHostPorts error: ", err)
+		return nil, err
+	}
+
 	//debugging
-	fmt.Print("-After Filtering Nodes")
-	for _, nodeinfo := range NodeInfoList {
+	fmt.Print(" |After Filtering Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			fmt.Print(" | ", nodeinfo.NodeName)
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName)
+				continue
+			}
+			fmt.Print(" , ", nodeinfo.NodeName)
 		}
 	}
 	fmt.Println()
 
-	return NodeInfoList, nil
+	return nodeInfoList, nil
 
 }

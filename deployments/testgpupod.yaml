@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nbody-benchmark-mps-test
+  namespace: userpod
+spec:
+  template:
+    spec:
+      hostIPC: true
+      schedulerName: gpu-scheduler
+      containers:
+        - image: seedjeffwan/nbody:cuda-10.1
+          name: nbody1
+          args:
+            - nbody
+            - -benchmark
+            - -numdevices=1
+            - -numbodies=812000
+          resources:
+            limits:
+              keti.com/mpsgpu: 1
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+              ephemeral-storage: "1Gi"
+          volumeMounts:
+            - name: nvidia-mps
+              mountPath: /tmp/nvidia-mps
+      volumes:
+        - name: nvidia-mps
+          hostPath:
+            path: /tmp/nvidia-mps
+      restartPolicy: Never

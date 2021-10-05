@@ -17,9 +17,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"time"
 
 	"gpu-scheduler/postevent"
+	resource "gpu-scheduler/resourceinfo"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,28 +29,28 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-var isTrue bool = true
-
-//write GPUID to annotation
-func PatchPodAnnotationSpec(devId string) ([]byte, error) {
+func PatchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 	patchAnnotations := map[string]interface{}{
 		"metadata": map[string]map[string]string{"annotations": {
-			"UUID": devId,
+			"UUID": bestGPU,
 		}}}
 
 	return json.Marshal(patchAnnotations)
 }
 
-func PatchPodAnnotation(pod *corev1.Pod, devId string) error {
+//write GPUID to annotation
+func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
+	fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
+
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-	patchedAnnotationBytes, err := PatchPodAnnotationSpec(devId)
+	patchedAnnotationBytes, err := PatchPodAnnotationUUID(bestGPU)
 	if err != nil {
 		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
 	}
 
-	pod, err = host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+	_, err = host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 	if err != nil {
 		fmt.Println("patchPodAnnotation error: ", err)
 		return err
@@ -57,36 +58,20 @@ func PatchPodAnnotation(pod *corev1.Pod, devId string) error {
 	return nil
 }
 
-func Binding(pod *corev1.Pod, bestNode corev1.Node) error {
-	var devId string
+func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) error {
+	//var devId string
 
-	fmt.Println("3. Binding stage")
-
-	//임의로 지정된 deviceID
-	for _, container := range pod.Spec.Containers { //파드의 컨테이너 검사
-		GPUreq := container.Resources.Limits["keti.com/mpsgpu"]
-		if GPUreq.String() == "2" {
-			devId = "GPU-a06cd524-72c4-d6f0-4eda-d64af512dd8b,GPU-f6db4146-092d-146f-0814-8ff90b04f3d2"
-		} else {
-			if isTrue {
-				devId = "GPU-a06cd524-72c4-d6f0-4eda-d64af512dd8b"
-				isTrue = false
-			} else {
-				devId = "GPU-f6db4146-092d-146f-0814-8ff90b04f3d2"
-				isTrue = true
-			}
-		}
-	}
+	fmt.Println("[step 3] Binding stage")
 
 	//파드 스펙에 GPU 업데이트
-	err := PatchPodAnnotation(pod, devId)
+	err := PatchPodAnnotation(newPod, schedulingResult.BestGPU)
 	if err != nil {
 		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
 	}
 
 	binding := &corev1.Binding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: pod.Name,
+			Name: newPod.Pod.Name,
 		},
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -95,23 +80,27 @@ func Binding(pod *corev1.Pod, bestNode corev1.Node) error {
 		Target: corev1.ObjectReference{
 			APIVersion: "v1",
 			Kind:       "Node",
-			Name:       bestNode.Name,
+			Name:       schedulingResult.BestNode.NodeName,
 		},
 	}
 
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-	err = host_kubeClient.CoreV1().Pods(pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	err = host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Println("binding error: ", err)
 		return err
 	}
 
+	fmt.Println("<Result> BestNode:", schedulingResult.BestNode.NodeName)
+	fmt.Println("<Result> BestGPU:", schedulingResult.BestGPU)
+
 	// Emit a Kubernetes event that the Pod was scheduled successfully.
-	message := fmt.Sprintf("Successfully assigned %s to %s and GPU UUID is %s", pod.ObjectMeta.Name, bestNode.ObjectMeta.Name, devId)
-	event := postevent.MakeBindEvent(pod, message)
-	log.Println(message)
+	message := fmt.Sprintf("<Binding Success> Successfully assigned %s", newPod.Pod.ObjectMeta.Name)
+	event := postevent.MakeBindEvent(newPod, message)
+	fmt.Println(time.Now().Format("2006-01-02 15:04:05"), message)
+	fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
 	err = postevent.PostEvent(event)
 	if nil != err {
 		fmt.Println("binding>postEvent error: ", err)

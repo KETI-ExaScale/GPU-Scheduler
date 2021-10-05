@@ -19,14 +19,15 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func MetricBasedScoring(nodeInfoList []*resource.NodeInfo) error {
+func MetricBasedScoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 
-	fmt.Println(" 2-1. MetricBasedScoring")
+	fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
 			if nodeinfo.NodeName == "gpuserver2" {
-				nodeinfo.NodeScore = 50
+				stageScore := 50
+				nodeinfo.NodeScore += int(stageScore / 2)
 			}
 		}
 	}

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"gpu-scheduler/config"
+	resource "gpu-scheduler/resourceinfo"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +36,7 @@ var processorLock = &sync.Mutex{}
 
 //새로 생성된 파드 감시
 func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
-	fmt.Println("called MonitorUnscheduledPods")
+	fmt.Println("[A] Watching New Pod")
 	pods, errc := WatchUnscheduledPods() //새롭게 들어온 파드 얻음
 	for {
 		select {
@@ -44,10 +45,11 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 		case pod := <-pods:
 			processorLock.Lock()
 			time.Sleep(2 * time.Second)
-			fmt.Println("Watch->pod->scheduling")
+			fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+			fmt.Print("<New Pod ADDED> ")
 			err := SchedulePod(pod) //새롭게 들어온 파드 스케줄링
 			if err != nil {
-				fmt.Println("MonitorUnschedeuledPods>case pod: ", err)
+				fmt.Println("MonitorUnschedeuledPods>case pod error: ", err)
 			}
 			processorLock.Unlock()
 		case <-done:
@@ -60,11 +62,12 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 
 //스케줄링 실패한 파드 일정 주기로 재스케줄링
 func ReconcileUnscheduledPods(interval int, done chan struct{}, wg *sync.WaitGroup) {
-	fmt.Println("called ReconcileUnscheduledPods")
+	fmt.Println("[B] ReScheduling Loop")
 	for {
 		select {
 		case <-time.After(time.Duration(interval) * time.Second):
-			fmt.Println("called ReconcileUnscheduledPods>time duration")
+			t := time.Now()
+			fmt.Printf("<Re> Reschedule After time duration [%d:%d:%d]\n", t.Hour(), t.Minute(), t.Second())
 			err := SchedulePods()
 			if err != nil {
 				log.Println("ReconcileUnscheduledPods error: ", err)
@@ -78,7 +81,6 @@ func ReconcileUnscheduledPods(interval int, done chan struct{}, wg *sync.WaitGro
 }
 
 func WatchUnscheduledPods() (<-chan *corev1.Pod, <-chan error) {
-	fmt.Println("called WatchUnscheduledPods")
 	pods := make(chan *corev1.Pod)
 	errc := make(chan error, 1)
 
@@ -96,7 +98,6 @@ func WatchUnscheduledPods() (<-chan *corev1.Pod, <-chan error) {
 			}
 			for event := range watch.ResultChan() {
 				if event.Type == "ADDED" {
-					fmt.Println("ADDED")
 					pods <- event.Object.(*corev1.Pod)
 				}
 			}
@@ -106,14 +107,13 @@ func WatchUnscheduledPods() (<-chan *corev1.Pod, <-chan error) {
 }
 
 func GetUnscheduledPods() ([]*corev1.Pod, error) {
-	fmt.Println("called GetUnscheduledPods")
 	rescheduledPods := make([]*corev1.Pod, 0)
 
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
 	podList, err := host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("spec.schedulerName=%s,status.phase=Pending", config.SchedulerName),
+		FieldSelector: fmt.Sprintf("spec.schedulerName=%s,status.phase=Pending,spec.nodeName=", config.SchedulerName),
 	})
 
 	if err != nil {
@@ -122,8 +122,9 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 	}
 
 	for _, pod := range podList.Items {
-		if pod.Spec.NodeName == "" {
-			fmt.Println("pod.Spec.NodeName: ", pod.Spec.NodeName, "/pod.Spec.SchedulerName: ", pod.Spec.SchedulerName, "/pod.Status.Phase: ", pod.Status.Phase, "/pod.name: ", pod.Name)
+		if pod.ObjectMeta.Annotations["failedCount"] != "" {
+			fmt.Println("<ReSchedule Pod>")
+			fmt.Println("pod.Spec.NodeName: ", pod.Spec.NodeName, "pod.Spec.SchedulerName: ", pod.Spec.SchedulerName, "pod.Status.Phase: ", pod.Status.Phase, "pod.ObjectMeta.Annotations[failedcount]:", pod.ObjectMeta.Annotations["failedCount"])
 			rescheduledPods = append(rescheduledPods, &pod)
 		}
 	}
@@ -132,26 +133,45 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 }
 
 func SchedulePod(pod *corev1.Pod) error {
-	fmt.Println("--------------------------------------------------------------")
-	fmt.Println("newPodName:", pod.ObjectMeta.Name)
+	fmt.Println("PodName:", pod.ObjectMeta.Name)
 
-	nodes, err := predicates.Filtering(pod)
+	//get a new pod
+	newPod := resource.GetNewPodInfo(pod)
+
+	//[step0] update nodeInfoList
+	var nodeInfoList []*resource.NodeInfo
+	*resource.AvailableNodeCount = 0
+	nodeInfoList, err := resource.NodeUpdate(nodeInfoList)
+	if err != nil {
+		fmt.Println("Filtering>nodeUpdate error: ", err)
+		return err
+	}
+
+	//[step1] Filtering Stage
+	nodes, err := predicates.Filtering(newPod, nodeInfoList)
 	if err != nil {
 		fmt.Println("schedulePod>Scoring Filtering: ", err)
 		return err
 	}
 
-	if len(nodes) == 0 {
+	//no node to assign -> FailedScheduling -> insert FailedQueue
+	if *resource.AvailableNodeCount == 0 {
+		resource.FailedScheduling(pod)
 		return fmt.Errorf("Unable to schedule pod (%s) failed to fit in any node", pod.ObjectMeta.Name)
 	}
 
-	bestNode, err := priorities.Scoring(nodes, pod)
+	//[step2] Scoring Stage
+	nodes, err = priorities.Scoring(nodes, newPod)
 	if err != nil {
 		fmt.Println("schedulePod>Scoring error: ", err)
 		return err
 	}
 
-	err = Binding(pod, bestNode.Node)
+	//Get Best Node/GPU
+	result := resource.GetBestNodeAneGPU(nodes, newPod.RequestedResource.GPUMPS)
+
+	//[step3] Binding Stage
+	err = Binding(newPod, result)
 	if err != nil {
 		fmt.Println("schedulePod>Binding error: ", err)
 		return err
@@ -161,7 +181,6 @@ func SchedulePod(pod *corev1.Pod) error {
 }
 
 func SchedulePods() error { //called by reconcileUnscheduledPods
-	fmt.Println("called SchedulePods")
 	processorLock.Lock()
 	defer processorLock.Unlock()
 	pods, err := GetUnscheduledPods()
@@ -170,7 +189,8 @@ func SchedulePods() error { //called by reconcileUnscheduledPods
 		return err
 	}
 	for _, pod := range pods { //스케줄링 대기중인 파드들 하나씩 스케줄링
-		fmt.Println("reconcile called schedulepods: ", pod.Name)
+		fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+		fmt.Print("<Reschedule Pod ADDED> ")
 		err := SchedulePod(pod)
 		if err != nil {
 			log.Println("SchedulePods>schedulepod error: ", err)

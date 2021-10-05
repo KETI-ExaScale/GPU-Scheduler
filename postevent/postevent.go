@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gpu-scheduler/config"
+	resource "gpu-scheduler/resourceinfo"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,7 +12,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func MakeNoNodeEvent(newPod *corev1.Pod, message string) *corev1.Event {
+func MakeNoNodeEvent(newPod *resource.Pod, message string) *corev1.Event {
 	event := &corev1.Event{
 		Count:          1,
 		Message:        message,
@@ -24,19 +25,19 @@ func MakeNoNodeEvent(newPod *corev1.Pod, message string) *corev1.Event {
 		},
 		InvolvedObject: corev1.ObjectReference{
 			Kind:      "Pod",
-			Name:      newPod.Name,
+			Name:      newPod.Pod.Name,
 			Namespace: "default",
-			UID:       newPod.UID,
+			UID:       newPod.Pod.UID,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: newPod.Name + "-",
-			Name:         newPod.Name,
+			GenerateName: newPod.Pod.Name + "-",
+			Name:         newPod.Pod.Name,
 		},
 	}
 	return event
 }
 
-func MakeBindEvent(pod *corev1.Pod, message string) *corev1.Event {
+func MakeBindEvent(pod *resource.Pod, message string) *corev1.Event {
 	event := &corev1.Event{
 		Count:          1,
 		Message:        message,
@@ -49,13 +50,13 @@ func MakeBindEvent(pod *corev1.Pod, message string) *corev1.Event {
 		},
 		InvolvedObject: corev1.ObjectReference{
 			Kind:      "Pod",
-			Name:      pod.Name,
-			Namespace: pod.Namespace,
-			UID:       pod.UID,
+			Name:      pod.Pod.Name,
+			Namespace: pod.Pod.Namespace,
+			UID:       pod.Pod.UID,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: pod.Name + "-",
-			Name:         pod.Name,
+			GenerateName: pod.Pod.Name + "-",
+			Name:         pod.Pod.Name,
 		},
 	}
 	return event
