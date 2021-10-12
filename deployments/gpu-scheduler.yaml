@@ -23,14 +23,38 @@ spec:
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
+            - name: gpu-scheduler-configmap
+              mountPath: /tmp
           resources: 
             limits:
               memory: "200Mi"
             requests:
               memory: "200Mi"
+          # env:
+          #   - name: NodeWeight
+          #     valueFrom:
+          #       configMapKeyRef:
+          #         name: gpu-scheduler-configmap
+          #         key: node-gpu-score-weight
+          #   - name: GPUWeight
+          #     valueFrom:
+          #       configMapKeyRef:
+          #         name: gpu-scheduler-configmap
+          #         key: node-gpu-score-weight
+          #   - name: ReSchedule
+          #     valueFrom:
+          #       configMapKeyRef:
+          #         name: gpu-scheduler-configmap
+          #         key: pod-re-schedule-permit
+          #envFrom:
+            #- configMapRef:
+              #name: gpu-scheduler-configmap
       volumes:
         - name: tz-config
           hostPath:
             path: /usr/share/zoneinfo/Asia/Seoul
+        - name: gpu-scheduler-configmap
+          configMap:
+            name: gpu-scheduler-configmap
 
             

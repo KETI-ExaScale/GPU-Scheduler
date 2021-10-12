@@ -18,12 +18,13 @@ import (
 	"fmt"
 	"gpu-scheduler/algorithm/predicates"
 	"gpu-scheduler/algorithm/priorities"
-	"log"
-	"sync"
-	"time"
-
 	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
+	"log"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,8 +133,25 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 	return rescheduledPods, nil
 }
 
+const (
+	policy1 = "score-summation-weight"
+	policy2 = "pod-re-scheduling-permit"
+)
+
 func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("PodName:", pod.ObjectMeta.Name)
+
+	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
+	reSchedule, _ := exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
+
+	nodeWeight := strings.Split(string(weight), " ")[0]
+	gpuWeight := strings.Split(string(weight), " ")[1]
+	weightPolicy := "(node weight = " + nodeWeight + ") (gpu weight = " + gpuWeight + ")"
+	reSchedulePolicy := "reSchedule :" + string(reSchedule)
+	fmt.Println("[GPU Scheduler Policy List]")
+	fmt.Println("             NAME             |  STATUS |              POLICIES                  ")
+	fmt.Printf("%-30v| Enabled | %-40v\n", policy1, string(weightPolicy))
+	fmt.Printf("%-30v| Enabled | %-40v\n", policy2, string(reSchedulePolicy))
 
 	//get a new pod
 	newPod := resource.GetNewPodInfo(pod)
