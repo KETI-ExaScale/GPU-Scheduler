@@ -152,7 +152,7 @@ func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("             NAME             |  STATUS |              POLICIES                  ")
 	fmt.Printf("%-30v| Enabled | %-40v\n", policy1, string(weightPolicy))
 	fmt.Printf("%-30v| Enabled | %-40v\n", policy2, string(reSchedulePolicy))
-	print("4")
+	print("5")
 
 	//get a new pod
 	newPod := resource.GetNewPodInfo(pod)
