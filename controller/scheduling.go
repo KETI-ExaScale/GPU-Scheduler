@@ -134,7 +134,7 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 }
 
 const (
-	policy1 = "score-summation-weight"
+	policy1 = "node-gpu-weight"
 	policy2 = "pod-re-scheduling-permit"
 )
 
