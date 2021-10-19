@@ -10,7 +10,7 @@ import (
 )
 
 func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-4] Filtering > PodFitsHostPorts")
+	//fmt.Println("[step 1-4] Filtering > PodFitsHostPorts")
 
 	wantPorts := getContainerPorts(newPod.Pod)
 	if len(wantPorts) == 0 {
@@ -30,7 +30,7 @@ func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("PodFitsHostPorts error: ", err)
 			return err
 		}
 	}

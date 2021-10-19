@@ -18,11 +18,10 @@ spec:
             - -numbodies=812000
           resources:
             limits:
-              keti.com/mpsgpu: 1
+              keti.com/mpsgpu: 2
             requests:
               memory: "64Mi"
               cpu: "250m"
-              ephemeral-storage: "1Gi"
           volumeMounts:
             - name: nvidia-mps
               mountPath: /tmp/nvidia-mps

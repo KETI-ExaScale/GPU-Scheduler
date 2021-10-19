@@ -19,7 +19,7 @@ spec:
       serviceAccountName: scheduler
       containers:
         - name: gpu-scheduler
-          image: ketidevit/gpu-scheduler:v0.1
+          image: ketidevit/gpu-scheduler:v15
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
@@ -30,25 +30,6 @@ spec:
               memory: "200Mi"
             requests:
               memory: "200Mi"
-          # env:
-          #   - name: NodeWeight
-          #     valueFrom:
-          #       configMapKeyRef:
-          #         name: gpu-scheduler-configmap
-          #         key: node-gpu-score-weight
-          #   - name: GPUWeight
-          #     valueFrom:
-          #       configMapKeyRef:
-          #         name: gpu-scheduler-configmap
-          #         key: node-gpu-score-weight
-          #   - name: ReSchedule
-          #     valueFrom:
-          #       configMapKeyRef:
-          #         name: gpu-scheduler-configmap
-          #         key: pod-re-schedule-permit
-          #envFrom:
-            #- configMapRef:
-              #name: gpu-scheduler-configmap
       volumes:
         - name: tz-config
           hostPath:

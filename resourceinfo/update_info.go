@@ -49,7 +49,7 @@ func GetPods() (*corev1.PodList, error) {
 
 //Update NodeInfo
 func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
-	fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
+	//fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
@@ -65,10 +65,16 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
+		capacityres := NewTempResource()
+		allocatableres := NewTempResource()
 
-		if IsMaster(node) {
+		if IsNonGPUNode(node) {
 			continue
 		}
+
+		// if IsMaster(node) {
+		// 	continue
+		// }
 
 		isGPUNode, availableGPUCount := false, 0
 		var newGPUMetrics []*GPUMetric
@@ -84,6 +90,33 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			newGPUMetrics = getGPUMetrics(c, newNodeMetric.GPU_UUID)
 		}
 
+		//현재 매트릭콜렉터 말고 따로 자원량 수집 중(메트릭에서 단위 맞춰서 가져올예정)
+		for rName, rQuant := range node.Status.Capacity {
+			switch rName {
+			case corev1.ResourceCPU:
+				capacityres.MilliCPU = rQuant.MilliValue()
+			case corev1.ResourceMemory:
+				capacityres.Memory = rQuant.Value()
+			case corev1.ResourceEphemeralStorage:
+				capacityres.EphemeralStorage = rQuant.Value()
+			default:
+				// Casting from ResourceName to stirng because rName is ResourceName type
+			}
+		}
+
+		for rName, rQuant := range node.Status.Allocatable {
+			switch rName {
+			case corev1.ResourceCPU:
+				allocatableres.MilliCPU = rQuant.MilliValue()
+			case corev1.ResourceMemory:
+				allocatableres.Memory = rQuant.Value()
+			case corev1.ResourceEphemeralStorage:
+				allocatableres.EphemeralStorage = rQuant.Value()
+			default:
+				// Casting from ResourceName to stirng because rName is ResourceName type
+			}
+		}
+
 		// make new Node
 		newNodeInfo := &NodeInfo{
 			NodeName:          node.Name,
@@ -95,6 +128,8 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			AvailableGPUCount: availableGPUCount,
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
+			AvailableResource: allocatableres,
+			CapacityResource:  capacityres,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -119,24 +154,22 @@ func getPodsInNode(pods *corev1.PodList, nodeName string) []*corev1.Pod {
 
 func getNodeMetric(c client.Client, nodeName string) *NodeMetric {
 	q := client.Query{
-		Command:  fmt.Sprintf("SELECT last(*) FROM metric where NodeName='%s'", nodeName),
-		Database: "multimetric",
+		Command:  fmt.Sprintf("SELECT last(*) FROM multimetric where NodeName='%s'", nodeName),
+		Database: "metric",
 	}
-
 	response, err := c.Query(q)
 	if err != nil || response.Error() != nil {
 		fmt.Println("InfluxDB error: ", err)
 		return nil
 	}
-
 	myNodeMetric := response.Results[0].Series[0].Values[0]
 
 	totalGPUCount, _ := strconv.Atoi(fmt.Sprintf("%s", myNodeMetric[1]))
 	nodeCPU := fmt.Sprintf("%s", myNodeMetric[2])
 	nodeMemory := fmt.Sprintf("%s", myNodeMetric[3])
-	uuids := stringToArray(myNodeMetric[4].(string))
+	uuids := stringToArray(myNodeMetric[5].(string))
 
-	fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
+	//fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
 	return &NodeMetric{
 		NodeCPU:       nodeCPU,
 		NodeMemory:    nodeMemory,
@@ -156,25 +189,23 @@ func getGPUMetrics(c client.Client, uuids []string) []*GPUMetric {
 
 	for _, uuid := range uuids {
 		q := client.Query{
-			Command:  fmt.Sprintf("SELECT last(*) FROM metric where UUID='%s'", uuid),
-			Database: "gpumap",
+			Command:  fmt.Sprintf("SELECT last(*) FROM gpumetric where UUID='%s'", uuid),
+			Database: "metric",
 		}
-
 		response, err := c.Query(q)
 		if err != nil || response.Error() != nil {
 			fmt.Println("InfluxDB error: ", err)
 			return nil
 		}
-
 		myGPUMetric := response.Results[0].Series[0].Values[0]
 
 		gpuName := fmt.Sprintf("%s", myGPUMetric[1])
 		mpsIndex, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[2]))
 		gpuPower, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[3]))
-		gpuMemoryTotal, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[6]))
+		gpuMemoryTotal, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[5]))
 		gpuMemoryFree, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[4]))
-		gpuMemoryUsed, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[7]))
-		gpuTemperature, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[8]))
+		gpuMemoryUsed, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[6]))
+		gpuTemperature, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[7]))
 
 		newGPUMetric := &GPUMetric{
 			GPUName:        gpuName,
@@ -189,7 +220,7 @@ func getGPUMetrics(c client.Client, uuids []string) []*GPUMetric {
 			GPUScore:       0,
 		}
 
-		fmt.Println(" |GPUMetric|", newGPUMetric)
+		//fmt.Println(" |GPUMetric|", newGPUMetric)
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 	}
 

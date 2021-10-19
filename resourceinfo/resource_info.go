@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"os/exec"
+	"sort"
 	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +32,8 @@ type NodeInfo struct {
 	AvailableGPUCount  int  //get number of available gpu count; default totalGPUCount
 	NodeMetric         *NodeMetric
 	GPUMetrics         []*GPUMetric
+	AvailableResource  *TempResource
+	CapacityResource   *TempResource
 }
 
 // each node metric
@@ -60,12 +66,18 @@ type Pod struct {
 	IsGPUPod           bool
 }
 
+type TempResource struct {
+	MilliCPU         int64
+	Memory           int64
+	EphemeralStorage int64
+}
+
 type Resource struct {
 	MilliCPU         int
 	Memory           int
 	EphemeralStorage int
 	GPUMPS           int
-	GPUMemory        int
+	GPUMemory        int //아직 요청 X
 }
 
 //예상 리소스 요청량
@@ -91,6 +103,14 @@ func IsMaster(node corev1.Node) bool {
 		return true
 	}
 	return false
+}
+
+//return whether the node is GPUNode or not
+func IsNonGPUNode(node corev1.Node) bool {
+	if _, ok := node.Labels["gpu"]; ok {
+		return false
+	}
+	return true
 }
 
 //newly add failedCount 1
@@ -158,6 +178,14 @@ func NewExResource() *ExResource {
 	}
 }
 
+func NewTempResource() *TempResource {
+	return &TempResource{
+		MilliCPU:         0,
+		Memory:           0,
+		EphemeralStorage: 0,
+	}
+}
+
 func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 	isGPUPod := false
 	res := NewResource()
@@ -200,38 +228,66 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 }
 
 type SchedulingResult struct {
-	BestNode  *NodeInfo
-	NodeScore int
-	BestGPU   string
+	BestNode   string
+	TotalScore int
+	BestGPU    string
 }
 
 func newResult() SchedulingResult {
 	return SchedulingResult{
-		BestNode:  nil,
-		NodeScore: 0,
-		BestGPU:   "",
+		BestNode:   "",
+		TotalScore: 0,
+		BestGPU:    "",
 	}
 }
-
-var isTrue bool = true
 
 func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int) SchedulingResult {
 	result := newResult()
 
-	result.BestNode = nodeInfoList[0]
-
-	if requestedGPU == 2 {
-		result.BestGPU += nodeInfoList[0].GPUMetrics[0].UUID + ","
-		result.BestGPU += nodeInfoList[0].GPUMetrics[1].UUID
-	} else {
-		if isTrue {
-			result.BestGPU += nodeInfoList[0].GPUMetrics[0].UUID
-			isTrue = false
-		} else {
-			result.BestGPU += nodeInfoList[0].GPUMetrics[0].UUID
-			isTrue = true
+	for _, node := range nodeInfoList {
+		totalScore, bestGPU := getTotalScore(node, requestedGPU)
+		if result.TotalScore < totalScore {
+			result.BestNode = node.NodeName
+			result.BestGPU = bestGPU
+			result.TotalScore = totalScore
 		}
 	}
 
+	//fmt.Println("[[result]] ", result)
 	return result
+}
+
+func getTotalScore(node *NodeInfo, requestedGPU int) (int, string) {
+	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
+	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[0], 64)
+	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[1], 64)
+	//fmt.Println("[[NodeScore]] ", node.NodeScore)
+	totalGPUScore, bestGPU := getTotalGPUScore(node.GPUMetrics, requestedGPU)
+	totalScore := math.Round(float64(node.NodeScore)*nodeWeight + float64(totalGPUScore)*gpuWeight)
+
+	//fmt.Println("[[totalScoreResult]] ", totalScore, bestGPU)
+	return int(totalScore), bestGPU
+}
+
+func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int) (int, string) {
+	totalGPUScore, bestGPU := float64(0), ""
+
+	sort.Slice(gpuMetrics, func(i, j int) bool {
+		return gpuMetrics[i].GPUScore > gpuMetrics[j].GPUScore
+	})
+
+	//fmt.Println("[[requestedGPU]] ", requestedGPU)
+
+	bestGPUMetrics := gpuMetrics[:requestedGPU]
+	for _, gpu := range bestGPUMetrics {
+		bestGPU += gpu.UUID + ","
+		//fmt.Println("[[GPUScore]] ", gpu.UUID, gpu.GPUScore)
+		totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+
+	}
+	totalGPUScore, bestGPU = math.Round(totalGPUScore), strings.Trim(bestGPU, ",")
+
+	//fmt.Println("[[NodetotalGPUScoreResult]] ", totalGPUScore, bestGPU)
+
+	return int(totalGPUScore), bestGPU
 }

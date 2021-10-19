@@ -8,8 +8,9 @@ import (
 )
 
 func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-1] Filtering > PodFitsHost")
+	//fmt.Println("[step 1-1] Filtering > PodFitsHost")
 
+	//노드 네임 지정 O
 	if len(newPod.Pod.Spec.NodeName) != 0 {
 		for _, nodeinfo := range nodeInfoList {
 			if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {

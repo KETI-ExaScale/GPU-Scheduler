@@ -25,22 +25,22 @@ import (
 // }
 
 func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resource.NodeInfo, error) {
-	fmt.Println("[step 2] Scoring Stage")
+	//fmt.Println("[step 2] Scoring Stage")
 
 	//var bestPriceNode *NodePrice
 
 	//debugging
-	fmt.Print(" |Before Scoring Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-				continue
-			}
-			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-		}
-	}
-	fmt.Println()
+	// fmt.Print(" |Before Scoring Nodes| ")
+	// for i, nodeinfo := range nodeInfoList {
+	// 	if !nodeinfo.IsFiltered {
+	// 		if i == 0 {
+	// 			fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+	// 			continue
+	// 		}
+	// 		fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+	// 	}
+	// }
+	// fmt.Println()
 
 	//1. LeastGPUMemory
 	err := LeastGPUMemory(nodeInfoList, newPod)
@@ -48,6 +48,12 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		fmt.Println("scoring>metricBasedScoring error: ", err)
 		return nodeInfoList, err
 	}
+
+	// for _, node := range nodeInfoList {
+	// 	for _, gpu := range node.GPUMetrics {
+	// 		fmt.Println("[gpuscore]", gpu.UUID, gpu.GPUScore)
+	// 	}
+	// }
 
 	//2. CheckGPUAvailable
 	err = MetricBasedScoring(nodeInfoList, newPod)
@@ -57,17 +63,17 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 	}
 
 	//debugging
-	fmt.Print(" |After Scoring Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-				continue
-			}
-			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-		}
-	}
-	fmt.Println()
+	// fmt.Print(" |After Scoring Nodes| ")
+	// for i, nodeinfo := range nodeInfoList {
+	// 	if !nodeinfo.IsFiltered {
+	// 		if i == 0 {
+	// 			fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+	// 			continue
+	// 		}
+	// 		fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+	// 	}
+	// }
+	// fmt.Println()
 
 	return nodeInfoList, nil
 }

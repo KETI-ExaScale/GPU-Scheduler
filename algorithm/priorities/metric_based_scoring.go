@@ -14,21 +14,20 @@
 package priorities
 
 import (
-	"fmt"
-
 	resource "gpu-scheduler/resourceinfo"
+	"math"
 )
 
 func MetricBasedScoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 
-	fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
+	//fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			if nodeinfo.NodeName == "gpuserver2" {
-				stageScore := 50
-				nodeinfo.NodeScore += int(stageScore / 2)
-			}
+			nodeScore := float64(nodeinfo.AvailableResource.MilliCPU) / float64(nodeinfo.CapacityResource.MilliCPU) * 50
+			nodeScore += float64(nodeinfo.AvailableResource.Memory) / float64(nodeinfo.CapacityResource.Memory) * 50
+			nodeinfo.NodeScore = int(math.Round(nodeScore))
+			//fmt.Println("[[stageScore]] ", stageScore)
 		}
 	}
 

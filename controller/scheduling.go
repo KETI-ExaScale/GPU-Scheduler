@@ -21,8 +21,6 @@ import (
 	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +49,7 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 			err := SchedulePod(pod) //새롭게 들어온 파드 스케줄링
 			if err != nil {
 				fmt.Println("MonitorUnschedeuledPods>case pod error: ", err)
+				fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
 			}
 			processorLock.Unlock()
 		case <-done:
@@ -124,8 +123,8 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 
 	for _, pod := range podList.Items {
 		if pod.ObjectMeta.Annotations["failedCount"] != "" {
-			fmt.Println("<ReSchedule Pod>")
-			fmt.Println("pod.Spec.NodeName: ", pod.Spec.NodeName, "pod.Spec.SchedulerName: ", pod.Spec.SchedulerName, "pod.Status.Phase: ", pod.Status.Phase, "pod.ObjectMeta.Annotations[failedcount]:", pod.ObjectMeta.Annotations["failedCount"])
+			fmt.Print("<ReSchedule Pod>")
+			//fmt.Println("pod.Spec.NodeName: ", pod.Spec.NodeName, "pod.Spec.SchedulerName: ", pod.Spec.SchedulerName, "pod.Status.Phase: ", pod.Status.Phase, "pod.ObjectMeta.Annotations[failedcount]:", pod.ObjectMeta.Annotations["failedCount"])
 			rescheduledPods = append(rescheduledPods, &pod)
 		}
 	}
@@ -141,18 +140,18 @@ const (
 func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("PodName:", pod.ObjectMeta.Name)
 
-	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
-	reSchedule, _ := exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
+	//policy
+	// weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
+	// reSchedule, _ := exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
 
-	nodeWeight := strings.Split(string(weight), " ")[0]
-	gpuWeight := strings.Split(string(weight), " ")[1]
-	weightPolicy := "(node weight = " + nodeWeight + ") (gpu weight = " + gpuWeight + ")"
-	reSchedulePolicy := "reSchedule :" + string(reSchedule)
-	fmt.Println("[GPU Scheduler Policy List]")
-	fmt.Println("             NAME             |  STATUS |              POLICIES                  ")
-	fmt.Printf("%-30v| Enabled | %-40v\n", policy1, string(weightPolicy))
-	fmt.Printf("%-30v| Enabled | %-40v\n", policy2, string(reSchedulePolicy))
-	print("23")
+	// nodeWeight := strings.Split(string(weight), " ")[0]
+	// gpuWeight := strings.Split(string(weight), " ")[1]
+	// weightPolicy := "(node weight = " + nodeWeight + ") (gpu weight = " + gpuWeight + ")"
+	// reSchedulePolicy := "reSchedule :" + string(reSchedule)
+	// fmt.Println("[GPU Scheduler Policy List]")
+	// fmt.Println("             NAME             |  STATUS |              POLICIES                  ")
+	// fmt.Printf("%-30v| Enabled | %-40v\n", policy1, string(weightPolicy))
+	// fmt.Printf("%-30v| Enabled | %-40v\n", policy2, string(reSchedulePolicy))
 
 	//get a new pod
 	newPod := resource.GetNewPodInfo(pod)

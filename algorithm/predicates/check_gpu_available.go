@@ -2,11 +2,13 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
+	"log"
 )
 
 func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-2] Filtering > CheckGPUAvailable")
+	//fmt.Println("[step 1-2] Filtering > CheckGPUAvailable")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
@@ -15,12 +17,22 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 				continue
 			}
 			for _, gpu := range nodeinfo.GPUMetrics {
-				if !gpu.IsFiltered {
-					if !GPUFiltering(gpu, newPod.ExpectedResource) {
-						gpu.FilterGPU(nodeinfo)
-					}
+				if !GPUFiltering(gpu, newPod.ExpectedResource) {
+					gpu.FilterGPU(nodeinfo)
 				}
 			}
+		}
+	}
+
+	//no node to allocate
+	if *resource.AvailableNodeCount == 0 {
+		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
+		log.Println(message)
+		event := postevent.MakeNoNodeEvent(newPod, message)
+		err := postevent.PostEvent(event)
+		if err != nil {
+			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			return err
 		}
 	}
 
@@ -29,7 +41,7 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 
 //GPU Filtering by {GPU Memory, Temperature}
 func GPUFiltering(gpu *resource.GPUMetric, exGPURequest *resource.ExResource) bool {
-	//온도 >= 95, 예측메모리 > 가용메모리
+	//온도 >= 95, 예측메모리(현재0) > 가용메모리
 	if gpu.GPUTemperature >= 95 || exGPURequest.ExGPUMemory > gpu.GPUMemoryFree {
 		return false
 	}
