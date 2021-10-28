@@ -70,6 +70,13 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		return nil, err
 	}
 
+	//6. PodToleratesNodeTaints
+	// err = PodToleratesNodeTaints(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>PodToleratesNodeTaints error: ", err)
+	// 	return nil, err
+	// }
+
 	//debugging
 	fmt.Print(" |After Filtering Nodes| ")
 	for i, nodeinfo := range nodeInfoList {
