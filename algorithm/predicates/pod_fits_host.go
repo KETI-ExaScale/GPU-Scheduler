@@ -8,13 +8,15 @@ import (
 )
 
 func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	//fmt.Println("[step 1-1] Filtering > PodFitsHost")
+	fmt.Println("[step 1-1] Filtering > PodFitsHost")
 
-	//노드 네임 지정 O
+	//NodeName O
 	if len(newPod.Pod.Spec.NodeName) != 0 {
 		for _, nodeinfo := range nodeInfoList {
-			if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {
-				nodeinfo.FilterNode()
+			if !nodeinfo.IsFiltered {
+				if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {
+					nodeinfo.FilterNode()
+				}
 			}
 		}
 	}
@@ -29,6 +31,7 @@ func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error 
 			fmt.Println("PodFitsResourcesAndGPU error: ", err)
 			return err
 		}
+		return err
 	}
 
 	return nil

@@ -40,7 +40,7 @@ func PatchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 
 //write GPUID to annotation
 func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
-	//fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
+	fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
 
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
@@ -59,9 +59,7 @@ func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
 }
 
 func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) error {
-	//var devId string
-
-	//fmt.Println("[step 3] Binding stage")
+	fmt.Println("[step 3] Binding stage")
 
 	//파드 스펙에 GPU 업데이트
 	err := PatchPodAnnotation(newPod, schedulingResult.BestGPU)

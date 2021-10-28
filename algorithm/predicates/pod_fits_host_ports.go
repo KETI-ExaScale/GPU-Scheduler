@@ -10,7 +10,7 @@ import (
 )
 
 func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	//fmt.Println("[step 1-4] Filtering > PodFitsHostPorts")
+	fmt.Println("[step 1-4] Filtering > PodFitsHostPorts")
 
 	wantPorts := getContainerPorts(newPod.Pod)
 	if len(wantPorts) == 0 {
@@ -18,8 +18,10 @@ func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 	}
 
 	for _, nodeinfo := range nodeInfoList {
-		if !fitPorts(wantPorts, nodeinfo) {
-			nodeinfo.FilterNode()
+		if !nodeinfo.IsFiltered {
+			if !fitPorts(wantPorts, nodeinfo) {
+				nodeinfo.FilterNode()
+			}
 		}
 	}
 
@@ -33,6 +35,7 @@ func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 			fmt.Println("PodFitsHostPorts error: ", err)
 			return err
 		}
+		return err
 	}
 
 	return nil

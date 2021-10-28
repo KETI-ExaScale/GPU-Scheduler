@@ -27,6 +27,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
 //Get Nodes in Cluster
@@ -49,7 +51,7 @@ func GetPods() (*corev1.PodList, error) {
 
 //Update NodeInfo
 func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
-	//fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
+	fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
@@ -65,30 +67,21 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
-		capacityres := NewTempResource()
-		allocatableres := NewTempResource()
-
+		//Skip NonGPUNode
 		if IsNonGPUNode(node) {
 			continue
 		}
 
-		// if IsMaster(node) {
-		// 	continue
-		// }
-
-		isGPUNode, availableGPUCount := false, 0
+		capacityres := NewTempResource()    //temp
+		allocatableres := NewTempResource() //temp
 		var newGPUMetrics []*GPUMetric
 
 		CountUpAvailableNodeCount()
 
-		podsInNode := getPodsInNode(pods, node.Name)
-		newNodeMetric := getNodeMetric(c, node.Name)
-
-		if newNodeMetric.TotalGPUCount != 0 {
-			isGPUNode = true
-			availableGPUCount = newNodeMetric.TotalGPUCount
-			newGPUMetrics = getGPUMetrics(c, newNodeMetric.GPU_UUID)
-		}
+		podsInNode, MCIP := getPodsInNode(pods, node.Name)
+		newNodeMetric := getNodeMetric(c, node.Name, MCIP)
+		availableGPUCount := newNodeMetric.TotalGPUCount
+		newGPUMetrics = getGPUMetrics(c, newNodeMetric.GPU_UUID)
 
 		//현재 매트릭콜렉터 말고 따로 자원량 수집 중(메트릭에서 단위 맞춰서 가져올예정)
 		for rName, rQuant := range node.Status.Capacity {
@@ -103,7 +96,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 				// Casting from ResourceName to stirng because rName is ResourceName type
 			}
 		}
-
 		for rName, rQuant := range node.Status.Allocatable {
 			switch rName {
 			case corev1.ResourceCPU:
@@ -124,12 +116,12 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			Pods:              podsInNode,
 			NodeScore:         0,
 			IsFiltered:        false,
-			IsGPUNode:         isGPUNode,
 			AvailableGPUCount: availableGPUCount,
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
 			AvailableResource: allocatableres,
 			CapacityResource:  capacityres,
+			GRPCHost:          MCIP,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -142,17 +134,22 @@ func CountUpAvailableNodeCount() {
 	*AvailableNodeCount++
 }
 
-func getPodsInNode(pods *corev1.PodList, nodeName string) []*corev1.Pod {
-	podsInNode := make([]*corev1.Pod, 0)
+func getPodsInNode(pods *corev1.PodList, nodeName string) ([]*corev1.Pod, string) {
+	podsInNode, MCIP := make([]*corev1.Pod, 0), ""
+
 	for _, pod := range pods.Items {
 		if strings.Compare(pod.Spec.NodeName, nodeName) == 0 {
 			podsInNode = append(podsInNode, &pod)
+			if strings.HasPrefix(pod.Name, "gpu-metric-collector") {
+				MCIP = pod.Status.PodIP
+			}
 		}
 	}
-	return podsInNode
+
+	return podsInNode, MCIP
 }
 
-func getNodeMetric(c client.Client, nodeName string) *NodeMetric {
+func getNodeMetric(c client.Client, nodeName string, ip string) *NodeMetric {
 	q := client.Query{
 		Command:  fmt.Sprintf("SELECT last(*) FROM multimetric where NodeName='%s'", nodeName),
 		Database: "metric",
@@ -169,7 +166,17 @@ func getNodeMetric(c client.Client, nodeName string) *NodeMetric {
 	nodeMemory := fmt.Sprintf("%s", myNodeMetric[3])
 	uuids := stringToArray(myNodeMetric[5].(string))
 
-	//fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
+	fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
+
+	//gRPC test
+	// host := ip + ":9000"
+	// conn, err := grpc.Dial(host, grpc.WithInsecure())
+	// if err != nil {
+	// 	fmt.Println("gRPC Error!!!: ", err)
+	// }
+	// defer conn.Close()
+	// grpcClient := pb.NewUserClient(conn)
+
 	return &NodeMetric{
 		NodeCPU:       nodeCPU,
 		NodeMemory:    nodeMemory,
@@ -220,7 +227,7 @@ func getGPUMetrics(c client.Client, uuids []string) []*GPUMetric {
 			GPUScore:       0,
 		}
 
-		//fmt.Println(" |GPUMetric|", newGPUMetric)
+		fmt.Println(" |GPUMetric|", newGPUMetric)
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 	}
 

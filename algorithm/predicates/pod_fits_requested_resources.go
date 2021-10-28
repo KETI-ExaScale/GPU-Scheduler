@@ -9,7 +9,7 @@ import (
 
 //단위맞추기****
 func PodFitsRequestedResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	//fmt.Println("[step 1-3] Filtering > PodFitsRequestedResources")
+	fmt.Println("[step 1-3] Filtering > PodFitsRequestedResources")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
@@ -50,6 +50,7 @@ func PodFitsRequestedResources(nodeInfoList []*resource.NodeInfo, newPod *resour
 			fmt.Println("PodFitsResourcesAndGPU error: ", err)
 			return err
 		}
+		return err
 	}
 
 	return nil

@@ -20,20 +20,20 @@ import (
 )
 
 func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*resource.NodeInfo, error) {
-	//fmt.Println("[step 1] Filtering statge")
+	fmt.Println("[step 1] Filtering statge")
 
 	//debugging
-	//fmt.Print(" |Before Filtering Nodes| ")
-	// for i, nodeinfo := range nodeInfoList {
-	// 	if !nodeinfo.IsFiltered {
-	// 		if i == 0 {
-	// 			fmt.Print(nodeinfo.NodeName)
-	// 			continue
-	// 		}
-	// 		fmt.Print(" , ", nodeinfo.NodeName)
-	// 	}
-	// }
-	// fmt.Println()
+	fmt.Print(" |Before Filtering Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
+		if !nodeinfo.IsFiltered {
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName)
+				continue
+			}
+			fmt.Print(" , ", nodeinfo.NodeName)
+		}
+	}
+	fmt.Println()
 
 	//1. PodFitsHost
 	err := PodFitsHost(nodeInfoList, newPod)
@@ -63,18 +63,25 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		return nil, err
 	}
 
+	//5. MatchNodeSelector
+	err = MatchNodeSelector(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>MatchNodeSelector error: ", err)
+		return nil, err
+	}
+
 	//debugging
-	// fmt.Print(" |After Filtering Nodes| ")
-	// for i, nodeinfo := range nodeInfoList {
-	// 	if !nodeinfo.IsFiltered {
-	// 		if i == 0 {
-	// 			fmt.Print(nodeinfo.NodeName)
-	// 			continue
-	// 		}
-	// 		fmt.Print(" , ", nodeinfo.NodeName)
-	// 	}
-	// }
-	// fmt.Println()
+	fmt.Print(" |After Filtering Nodes| ")
+	for i, nodeinfo := range nodeInfoList {
+		if !nodeinfo.IsFiltered {
+			if i == 0 {
+				fmt.Print(nodeinfo.NodeName)
+				continue
+			}
+			fmt.Print(" , ", nodeinfo.NodeName)
+		}
+	}
+	fmt.Println()
 
 	return nodeInfoList, nil
 

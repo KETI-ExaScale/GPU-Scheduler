@@ -19,7 +19,7 @@ spec:
       serviceAccountName: scheduler
       containers:
         - name: gpu-scheduler
-          image: ketidevit/gpu-scheduler:v15
+          image: ketidevit/gpu-scheduler:v0.1
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime

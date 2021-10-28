@@ -14,6 +14,7 @@
 package priorities
 
 import (
+	"fmt"
 	"math"
 
 	resource "gpu-scheduler/resourceinfo"
@@ -21,7 +22,7 @@ import (
 
 func LeastGPUMemory(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 
-	//fmt.Println("[step 2-1] Scoring > LeastGPUMemory")
+	fmt.Println("[step 2-1] Scoring > LeastGPUMemory")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {

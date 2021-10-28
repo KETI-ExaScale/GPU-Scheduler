@@ -123,7 +123,6 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 
 	for _, pod := range podList.Items {
 		if pod.ObjectMeta.Annotations["failedCount"] != "" {
-			fmt.Print("<ReSchedule Pod>")
 			//fmt.Println("pod.Spec.NodeName: ", pod.Spec.NodeName, "pod.Spec.SchedulerName: ", pod.Spec.SchedulerName, "pod.Status.Phase: ", pod.Status.Phase, "pod.ObjectMeta.Annotations[failedcount]:", pod.ObjectMeta.Annotations["failedCount"])
 			rescheduledPods = append(rescheduledPods, &pod)
 		}

@@ -8,7 +8,7 @@ import (
 )
 
 func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	//fmt.Println("[step 1-2] Filtering > CheckGPUAvailable")
+	fmt.Println("[step 1-2] Filtering > CheckGPUAvailable")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
@@ -34,14 +34,15 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 			fmt.Println("PodFitsResourcesAndGPU error: ", err)
 			return err
 		}
+		return err
 	}
 
 	return nil
 }
 
-//GPU Filtering by {GPU Memory, Temperature}
+//GPU Filtering by {GPU Memory, Temperature} +a
 func GPUFiltering(gpu *resource.GPUMetric, exGPURequest *resource.ExResource) bool {
-	//온도 >= 95, 예측메모리(현재0) > 가용메모리
+	//Temperature >= 95, expectationMemory(현재0) > freeMemory
 	if gpu.GPUTemperature >= 95 || exGPURequest.ExGPUMemory > gpu.GPUMemoryFree {
 		return false
 	}

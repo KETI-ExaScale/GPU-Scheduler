@@ -28,12 +28,12 @@ type NodeInfo struct {
 	AdditionalResource []string
 	NodeScore          int  //default 0
 	IsFiltered         bool //if filtered true; else false
-	IsGPUNode          bool //if GPUnode true; else false
 	AvailableGPUCount  int  //get number of available gpu count; default totalGPUCount
 	NodeMetric         *NodeMetric
 	GPUMetrics         []*GPUMetric
 	AvailableResource  *TempResource
 	CapacityResource   *TempResource
+	GRPCHost           string
 }
 
 // each node metric
@@ -63,7 +63,6 @@ type Pod struct {
 	RequestedResource  *Resource
 	ExpectedResource   *ExResource
 	AdditionalResource []string
-	IsGPUPod           bool
 }
 
 type TempResource struct {
@@ -114,48 +113,43 @@ func IsNonGPUNode(node corev1.Node) bool {
 }
 
 //newly add failedCount 1
-func PatchPodAnnotationFailCount(pod corev1.Pod) ([]byte, error) {
+func PatchPodAnnotationFailCount(pod *corev1.Pod, count int) ([]byte, error) {
 	patchAnnotations := map[string]interface{}{
 		"metadata": map[string]map[string]string{"annotations": {
-			"failedCount": "1",
+			"failedCount": strconv.Itoa(count),
 		}}}
 	return json.Marshal(patchAnnotations)
 }
 
-//update failedCount ++1
-func UpdatePodAnnotationFailCount(pod *corev1.Pod) error {
-	failedCount, _ := strconv.Atoi(pod.ObjectMeta.Annotations["failedCount"])
-	pod.ObjectMeta.Annotations["failedCount"] = strconv.Itoa(failedCount + 1)
-	return nil
-}
-
-//if scheduling failed before true; else false
-func IsFailedScheduling(pod *corev1.Pod) bool {
-	if failedCount := pod.ObjectMeta.Annotations["failedCount"]; failedCount == "" {
-		return false
-	} else {
-		return true
-	}
-}
-
 //notice scheduling failed
 func FailedScheduling(pod *corev1.Pod) error {
-	if IsFailedScheduling(pod) {
-		UpdatePodAnnotationFailCount(pod)
-	} else {
-		host_config, _ := rest.InClusterConfig()
-		host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
-
-		patchedAnnotationBytes, err := PatchPodAnnotationFailCount(*pod)
+	if count, ok := pod.Labels["schedulingCount"]; ok {
+		c, _ := strconv.Atoi(count)
+		patchedAnnotationBytes, err := PatchPodAnnotationFailCount(pod, c+1)
 		if err != nil {
 			return fmt.Errorf("failed to generate patched fs annotations,reason: %v", err)
 		}
+		host_config, _ := rest.InClusterConfig()
+		host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
+
+		_, err = host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+		if err != nil {
+			fmt.Println("FailedScheduling patch error: ", err)
+		}
+	} else {
+		patchedAnnotationBytes, err := PatchPodAnnotationFailCount(pod, 1)
+		if err != nil {
+			return fmt.Errorf("failed to generate patched fs annotations,reason: %v", err)
+		}
+		host_config, _ := rest.InClusterConfig()
+		host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
 		_, err = host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 		if err != nil {
 			fmt.Println("FailedScheduling patch error: ", err)
 		}
 	}
+
 	return nil
 }
 
@@ -165,7 +159,7 @@ func NewResource() *Resource {
 		Memory:           0,
 		EphemeralStorage: 0,
 		GPUMPS:           0,
-		//GPUMemory:        0,
+		GPUMemory:        0,
 	}
 }
 
@@ -187,7 +181,6 @@ func NewTempResource() *TempResource {
 }
 
 func GetNewPodInfo(newPod *corev1.Pod) *Pod {
-	isGPUPod := false
 	res := NewResource()
 	exres := NewExResource() //예상 자원 사용량, 현재 X
 	additionalResource := make([]string, 0)
@@ -214,16 +207,11 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 		}
 	}
 
-	if res.GPUMPS != 0 {
-		isGPUPod = true
-	}
-
 	return &Pod{
 		Pod:                newPod,
 		RequestedResource:  res,
 		ExpectedResource:   exres,
 		AdditionalResource: additionalResource,
-		IsGPUPod:           isGPUPod,
 	}
 }
 
