@@ -26,9 +26,9 @@ type NodeInfo struct {
 	Node               corev1.Node
 	Pods               []*corev1.Pod
 	AdditionalResource []string
-	NodeScore          int  //default 0
-	IsFiltered         bool //if filtered true; else false
-	AvailableGPUCount  int  //get number of available gpu count; default totalGPUCount
+	NodeScore          int   //default 0
+	IsFiltered         bool  //if filtered true; else false
+	AvailableGPUCount  int64 //get number of available gpu count; default totalGPUCount
 	NodeMetric         *NodeMetric
 	GPUMetrics         []*GPUMetric
 	AvailableResource  *TempResource
@@ -38,9 +38,9 @@ type NodeInfo struct {
 
 // each node metric
 type NodeMetric struct {
-	NodeCPU       string
-	NodeMemory    string
-	TotalGPUCount int
+	NodeCPU       int64
+	NodeMemory    int64
+	TotalGPUCount int64
 	GPU_UUID      []string
 }
 
@@ -48,12 +48,12 @@ type NodeMetric struct {
 type GPUMetric struct {
 	GPUName        string
 	UUID           string
-	MPSIndex       int
-	GPUPower       int
-	GPUMemoryTotal int
-	GPUMemoryFree  int
-	GPUMemoryUsed  int
-	GPUTemperature int
+	MPSIndex       int64
+	GPUPower       int64
+	GPUMemoryTotal int64
+	GPUMemoryFree  int64
+	GPUMemoryUsed  int64
+	GPUTemperature int64
 	GPUScore       int
 	IsFiltered     bool
 }
@@ -72,18 +72,18 @@ type TempResource struct {
 }
 
 type Resource struct {
-	MilliCPU         int
-	Memory           int
-	EphemeralStorage int
-	GPUMPS           int
-	GPUMemory        int //아직 요청 X
+	MilliCPU         int64
+	Memory           int64
+	EphemeralStorage int64
+	GPUMPS           int64
+	GPUMemory        int64 //아직 요청 X
 }
 
 //예상 리소스 요청량
 type ExResource struct {
-	ExMilliCPU  int
-	ExMemory    int
-	ExGPUMemory int
+	ExMilliCPU  int64
+	ExMemory    int64
+	ExGPUMemory int64
 }
 
 func (n *NodeInfo) FilterNode() {
@@ -97,12 +97,12 @@ func (g *GPUMetric) FilterGPU(n *NodeInfo) {
 }
 
 //return whether the node is master or not
-func IsMaster(node corev1.Node) bool {
-	if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
-		return true
-	}
-	return false
-}
+// func IsMaster(node corev1.Node) bool {
+// 	if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+// 		return true
+// 	}
+// 	return false
+// }
 
 //return whether the node is GPUNode or not
 func IsNonGPUNode(node corev1.Node) bool {
@@ -189,16 +189,16 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 		GPUMPSLimit := container.Resources.Limits["keti.com/mpsgpu"]
 		if GPUMPSLimit.String() != "" {
 			temp, _ := strconv.Atoi(GPUMPSLimit.String())
-			res.GPUMPS += res.GPUMPS + temp
+			res.GPUMPS += res.GPUMPS + int64(temp)
 		}
 		for rName, rQuant := range container.Resources.Requests {
 			switch rName {
 			case corev1.ResourceCPU:
-				res.MilliCPU += int(rQuant.MilliValue())
+				res.MilliCPU += int64(rQuant.MilliValue())
 			case corev1.ResourceMemory:
-				res.Memory += int(rQuant.MilliValue())
+				res.Memory += int64(rQuant.MilliValue())
 			case corev1.ResourceEphemeralStorage:
-				res.EphemeralStorage += int(rQuant.MilliValue())
+				res.EphemeralStorage += int64(rQuant.MilliValue())
 			default:
 				// Casting from ResourceName to stirng because rName is ResourceName type
 				resourceName := string(rName)
@@ -229,7 +229,7 @@ func newResult() SchedulingResult {
 	}
 }
 
-func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int) SchedulingResult {
+func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingResult {
 	result := newResult()
 
 	for _, node := range nodeInfoList {
@@ -245,7 +245,7 @@ func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int) SchedulingRes
 	return result
 }
 
-func getTotalScore(node *NodeInfo, requestedGPU int) (int, string) {
+func getTotalScore(node *NodeInfo, requestedGPU int64) (int, string) {
 	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
 	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[0], 64)
 	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[1], 64)
@@ -257,7 +257,7 @@ func getTotalScore(node *NodeInfo, requestedGPU int) (int, string) {
 	return int(totalScore), bestGPU
 }
 
-func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int) (int, string) {
+func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string) {
 	totalGPUScore, bestGPU := float64(0), ""
 
 	sort.Slice(gpuMetrics, func(i, j int) bool {

@@ -66,6 +66,7 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
+
 		//Skip NonGPUNode
 		if IsNonGPUNode(node) {
 			continue
@@ -80,7 +81,7 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 		podsInNode, MCIP := getPodsInNode(pods, node.Name)
 		newNodeMetric := GetNodeMetric(c, node.Name, MCIP)
 		availableGPUCount := newNodeMetric.TotalGPUCount
-		newGPUMetrics = GetGPUMetrics(c, newNodeMetric.GPU_UUID)
+		newGPUMetrics = GetGPUMetrics(c, newNodeMetric.GPU_UUID, MCIP)
 
 		//현재 매트릭콜렉터 말고 따로 자원량 수집 중(메트릭에서 단위 맞춰서 가져올예정)
 		for rName, rQuant := range node.Status.Capacity {

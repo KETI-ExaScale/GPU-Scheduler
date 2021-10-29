@@ -1,0 +1,35 @@
+syntax = "proto3";
+package v1.user;
+option go_package = "grpcserver/protos/v1/user";
+service User {
+    rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+    rpc GetGPU(GetGPURequest) returns (GetGPUResponse);
+}
+message NodeMessage {
+    string node_name = 1;
+    int64 node_cpu = 2;
+    int64 gpu_count = 3;
+    int64 node_memory = 4;
+    string gpu_uuid = 5;
+}
+message GetNodeRequest {
+}
+message GetNodeResponse {
+    NodeMessage node_message = 1;
+}
+message GPUMessage {
+    string gpu_uuid = 1;
+    uint64 gpu_total = 2;
+    uint64 gpu_used = 3;
+    uint64 gpu_free = 4;
+    string gpu_name = 5;
+    int64 gpu_index = 6;
+    int64 gpu_temp = 7;
+    int64 gpu_power = 8;
+}
+message GetGPURequest{
+    string gpu_uuid = 1;
+}
+message GetGPUResponse {
+    GPUMessage gpu_message = 1;
+}
