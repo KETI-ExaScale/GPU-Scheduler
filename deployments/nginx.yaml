@@ -5,7 +5,6 @@ metadata:
     app: nginx
   name: nginx
 spec:
-  replicas: 2
   selector:
     matchLabels:
       app: nginx
@@ -17,6 +16,11 @@ spec:
         app: nginx
       name: nginx
     spec:
+      tolerations:
+        - key: testkey
+          value: testtestvalue
+          effect: NoExecute
+          operator: Equal
       containers:
         - name: nginx
           image: "nginx:1.11.1-alpine"

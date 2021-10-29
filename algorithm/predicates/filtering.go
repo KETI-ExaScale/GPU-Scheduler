@@ -36,14 +36,14 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 	fmt.Println()
 
 	//1. PodFitsHost
-	err := PodFitsHost(nodeInfoList, newPod)
-	if err != nil {
-		fmt.Println("Filtering>PodFitsHost error: ", err)
-		return nil, err
-	}
+	// err := PodFitsHost(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>PodFitsHost error: ", err)
+	// 	return nil, err
+	// }
 
 	//2. CheckGPUAvailable
-	err = CheckGPUAvailable(nodeInfoList, newPod)
+	err := CheckGPUAvailable(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>CheckGPUAvailable error: ", err)
 		return nil, err
