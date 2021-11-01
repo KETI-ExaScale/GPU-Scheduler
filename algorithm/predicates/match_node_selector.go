@@ -8,7 +8,7 @@ import (
 )
 
 func MatchNodeSelector(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-5] Filtering > MatchNodeSelector")
+	fmt.Println("[step 1-4] Filtering > MatchNodeSelector")
 
 	//NodeSelector O
 	if len(newPod.Pod.Spec.NodeSelector) != 0 {
@@ -34,7 +34,7 @@ func MatchNodeSelector(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("MatchNodeSelector error: ", err)
 			return err
 		}
 		return err

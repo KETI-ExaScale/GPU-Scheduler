@@ -37,7 +37,7 @@ func NoDiskConflict(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) err
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("NoDiskConflict error: ", err)
 			return err
 		}
 		return err

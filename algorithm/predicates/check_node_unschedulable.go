@@ -12,7 +12,7 @@ import (
 )
 
 func CheckNodeUnschedulable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-] Filtering > CheckNodeUnschedulable")
+	fmt.Println("[step 1-2] Filtering > CheckNodeUnschedulable")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {

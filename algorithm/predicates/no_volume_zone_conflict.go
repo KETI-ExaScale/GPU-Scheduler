@@ -7,24 +7,12 @@ import (
 	"log"
 )
 
-func PodToleratesNodeTaints(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-5] Filtering > PodToleratesNodeTaints")
+func NoVolumeZoneConflict(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+	fmt.Println("[step 1-9] Filtering > NoVolumeZoneConflict")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			for _, taint := range nodeinfo.Node.Spec.Taints {
-				tolerated := false
-				for _, toleration := range newPod.Pod.Spec.Tolerations {
-					if toleration.ToleratesTaint(&taint) {
-						tolerated = true
-						break
-					}
-				}
-				if !tolerated {
-					nodeinfo.FilterNode()
-					break
-				}
-			}
+
 		}
 	}
 
@@ -35,7 +23,7 @@ func PodToleratesNodeTaints(nodeInfoList []*resource.NodeInfo, newPod *resource.
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodToleratesNodeTaints error: ", err)
+			fmt.Println("NoVolumeZoneConflict error: ", err)
 			return err
 		}
 		return err

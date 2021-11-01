@@ -8,7 +8,7 @@ import (
 )
 
 func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-2] Filtering > CheckGPUAvailable")
+	fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
@@ -31,7 +31,7 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("CheckGPUAvailable error: ", err)
 			return err
 		}
 		return err

@@ -7,8 +7,8 @@ import (
 	"log"
 )
 
-func PodFitsRequestedResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-3] Filtering > PodFitsRequestedResources")
+func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+	fmt.Println("[step 1-7] Filtering > PodFitsResources")
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
@@ -46,7 +46,7 @@ func PodFitsRequestedResources(nodeInfoList []*resource.NodeInfo, newPod *resour
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("PodFitsResources error: ", err)
 			return err
 		}
 		return err

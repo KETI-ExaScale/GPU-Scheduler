@@ -10,7 +10,7 @@ import (
 )
 
 func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-4] Filtering > PodFitsHostPorts")
+	fmt.Println("[step 1-3] Filtering > PodFitsHostPorts")
 
 	wantPorts := getContainerPorts(newPod.Pod)
 	if len(wantPorts) == 0 {

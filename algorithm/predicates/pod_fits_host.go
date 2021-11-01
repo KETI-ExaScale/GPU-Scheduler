@@ -28,7 +28,7 @@ func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error 
 		event := postevent.MakeNoNodeEvent(newPod, message)
 		err := postevent.PostEvent(event)
 		if err != nil {
-			fmt.Println("PodFitsResourcesAndGPU error: ", err)
+			fmt.Println("PodFitsHost error: ", err)
 			return err
 		}
 		return err

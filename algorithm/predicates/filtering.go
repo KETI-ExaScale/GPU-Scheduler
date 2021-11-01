@@ -42,38 +42,45 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		return nil, err
 	}
 
-	//2. CheckGPUAvailable
-	err = CheckGPUAvailable(nodeInfoList, newPod)
+	//2. CheckNodeUnschedulable
+	err = CheckNodeUnschedulable(nodeInfoList, newPod)
 	if err != nil {
-		fmt.Println("Filtering>CheckGPUAvailable error: ", err)
+		fmt.Println("Filtering>CheckNodeUnschedulable error: ", err)
 		return nil, err
 	}
 
-	//3. PodFitsResourcesAndGPU
-	err = PodFitsRequestedResources(nodeInfoList, newPod)
-	if err != nil {
-		fmt.Println("Filtering>PodFitsResourcesAndGPU error: ", err)
-		return nil, err
-	}
-
-	//4. PodFitsHostPorts
+	//3. PodFitsHostPorts
 	err = PodFitsHostPorts(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>PodFitsHostPorts error: ", err)
 		return nil, err
 	}
 
-	//5. MatchNodeSelector
+	//4. MatchNodeSelector
 	err = MatchNodeSelector(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>MatchNodeSelector error: ", err)
 		return nil, err
 	}
 
-	//6. PodToleratesNodeTaints
+	//5. PodToleratesNodeTaints
 	err = PodToleratesNodeTaints(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>PodToleratesNodeTaints error: ", err)
+		return nil, err
+	}
+
+	//6. CheckGPUAvailable
+	err = CheckGPUAvailable(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>CheckGPUAvailable error: ", err)
+		return nil, err
+	}
+
+	//7. PodFitsResourcesAndGPU
+	err = PodFitsResources(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("Filtering>PodFitsResources error: ", err)
 		return nil, err
 	}
 
@@ -83,6 +90,34 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		fmt.Println("Filtering>NoDiskConflict error: ", err)
 		return nil, err
 	}
+
+	// //8. MaxCSIVolumeCount
+	// err = MaxCSIVolumeCount(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>MaxCSIVolumeCount error: ", err)
+	// 	return nil, err
+	// }
+
+	// //9. NoVolumeZoneConflict
+	// err = NoVolumeZoneConflict(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>NoVolumeZoneConflict error: ", err)
+	// 	return nil, err
+	// }
+
+	// //10. CheckVolumeBinding
+	// err = CheckVolumeBinding(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>CheckVolumeBinding error: ", err)
+	// 	return nil, err
+	// }
+
+	// //11. CheckNodeReserved
+	// err = CheckNodeReserved(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("Filtering>CheckNodeReserved error: ", err)
+	// 	return nil, err
+	// }
 
 	//debugging
 	fmt.Print(" |After Filtering Nodes| ")
