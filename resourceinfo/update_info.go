@@ -78,7 +78,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			continue
 		}
 
-		capacityres := NewTempResource()    //temp
 		allocatableres := NewTempResource() //temp
 		var newGPUMetrics []*GPUMetric
 
@@ -89,19 +88,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 		availableGPUCount := newNodeMetric.TotalGPUCount
 		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, MCIP)
 
-		//현재 매트릭콜렉터 말고 따로 자원량 수집 중(메트릭에서 단위 맞춰서 가져올예정)
-		for rName, rQuant := range node.Status.Capacity {
-			switch rName {
-			case corev1.ResourceCPU:
-				capacityres.MilliCPU = rQuant.MilliValue()
-			case corev1.ResourceMemory:
-				capacityres.Memory = rQuant.Value()
-			case corev1.ResourceEphemeralStorage:
-				capacityres.EphemeralStorage = rQuant.Value()
-			default:
-				// Casting from ResourceName to stirng because rName is ResourceName type
-			}
-		}
 		for rName, rQuant := range node.Status.Allocatable {
 			switch rName {
 			case corev1.ResourceCPU:
@@ -126,7 +112,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
 			AvailableResource: allocatableres,
-			CapacityResource:  capacityres,
 			GRPCHost:          MCIP,
 		}
 

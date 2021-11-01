@@ -8,7 +8,7 @@ package config
 // )
 
 var (
-	n      = 3
+	N      = 3
 	Debugg = true
 )
 

@@ -21,9 +21,9 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func BalancedResourveAllocation(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 	if config.Debugg {
-		fmt.Println("[step 2-1] Scoring > LeastRequestedResource")
+		fmt.Println("[step 2-2] Scoring > BalancedResourveAllocation")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
@@ -32,21 +32,16 @@ func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
 
-			if (allocable.MilliCPU == 0) || (allocable.MilliCPU > requested.MilliCPU) {
-				continue
-			} else {
-				nodeScore += float64(allocable.MilliCPU-requested.MilliCPU) / float64(allocable.MilliCPU) * 40
-			}
-			if (allocable.Memory == 0) || (allocable.Memory > requested.Memory) {
-				continue
-			} else {
-				nodeScore += float64(allocable.Memory-requested.Memory) / float64(allocable.Memory) * 40
-			}
+			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)
+			memoryFraction := fractionOfCapacity(requested.Memory, allocable.Memory)
+			volumeFraction := fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage)
 
-			if (allocable.EphemeralStorage == 0) || (allocable.EphemeralStorage > requested.EphemeralStorage) {
-				continue
+			if cpuFraction >= 1 || memoryFraction >= 1 || volumeFraction >= 1 {
+				nodeScore = 0
 			} else {
-				nodeScore += float64(allocable.EphemeralStorage-requested.EphemeralStorage) / float64(allocable.EphemeralStorage) * 20
+				mean := (cpuFraction + memoryFraction + volumeFraction) / float64(3)
+				variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) + ((memoryFraction - mean) * (memoryFraction - mean)) + ((volumeFraction - mean) * (volumeFraction - mean))) / float64(3))
+				nodeScore = (1 - variance) * 100
 			}
 
 			nodeinfo.NodeScore = int(math.Round(nodeScore)) * (1 / config.N)
@@ -54,4 +49,11 @@ func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.
 	}
 
 	return nil
+}
+
+func fractionOfCapacity(req, cap int64) float64 {
+	if cap == 0 {
+		return 1
+	}
+	return float64(req) / float64(cap)
 }

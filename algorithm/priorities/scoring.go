@@ -45,17 +45,17 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		return nodeInfoList, err
 	}
 
-	// //debugging
-	// for _, node := range nodeInfoList {
-	// 	for _, gpu := range node.GPUMetrics {
-	// 		fmt.Println("[gpuscore]", gpu.UUID, gpu.GPUScore)
-	// 	}
-	// }
-
-	//2. CheckGPUAvailable
-	err = MetricBasedScoring(nodeInfoList, newPod)
+	//2. BalancedResourveAllocation
+	err = BalancedResourveAllocation(nodeInfoList, newPod)
 	if err != nil {
-		fmt.Println("scoring>metricBasedScoring error: ", err)
+		fmt.Println("scoring>BalancedResourveAllocation error: ", err)
+		return nodeInfoList, err
+	}
+
+	//3. RequestedToCapacityRatio
+	err = RequestedToCapacityRatio(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("scoring>RequestedToCapacityRatio error: ", err)
 		return nodeInfoList, err
 	}
 
