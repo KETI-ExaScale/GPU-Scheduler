@@ -2,13 +2,16 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
 )
 
 func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-1] Filtering > PodFitsHost")
+	if config.Debugg {
+		fmt.Println("[step 1-1] Filtering > PodFitsHost")
+	}
 
 	//NodeName O
 	if len(newPod.Pod.Spec.NodeName) != 0 {

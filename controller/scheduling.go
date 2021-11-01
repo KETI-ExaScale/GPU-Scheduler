@@ -35,7 +35,10 @@ var processorLock = &sync.Mutex{}
 
 //새로 생성된 파드 감시
 func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
-	fmt.Println("[A] Watching New Pod")
+	if config.Debugg {
+		fmt.Println("[A] Watching New Pod")
+	}
+
 	pods, errc := WatchUnscheduledPods() //새롭게 들어온 파드 얻음
 	for {
 		select {
@@ -44,12 +47,16 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 		case pod := <-pods:
 			processorLock.Lock()
 			time.Sleep(2 * time.Second)
-			fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
-			fmt.Print("<New Pod ADDED> ")
+			if config.Debugg {
+				fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+				fmt.Print("<New Pod ADDED> ")
+			}
 			err := SchedulePod(pod) //새롭게 들어온 파드 스케줄링
 			if err != nil {
-				fmt.Println("MonitorUnschedeuledPods>case pod error: ", err)
-				fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+				if config.Debugg {
+					fmt.Println("MonitorUnschedeuledPods>case pod error: ", err)
+					fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+				}
 			}
 			processorLock.Unlock()
 		case <-done:
@@ -62,12 +69,17 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 
 //스케줄링 실패한 파드 일정 주기로 재스케줄링
 func ReconcileUnscheduledPods(interval int, done chan struct{}, wg *sync.WaitGroup) {
-	fmt.Println("[B] ReScheduling Loop")
+	if config.Debugg {
+		fmt.Println("[B] ReScheduling Loop")
+	}
+
 	for {
 		select {
 		case <-time.After(time.Duration(interval) * time.Second):
 			t := time.Now()
-			fmt.Printf("<Re> Reschedule After time duration [%d:%d:%d]\n", t.Hour(), t.Minute(), t.Second())
+			if config.Debugg {
+				fmt.Printf("<Re> Reschedule After time duration [%d:%d:%d]\n", t.Hour(), t.Minute(), t.Second())
+			}
 			err := SchedulePods()
 			if err != nil {
 				log.Println("ReconcileUnscheduledPods error: ", err)
@@ -206,8 +218,10 @@ func SchedulePods() error { //called by reconcileUnscheduledPods
 		return err
 	}
 	for _, pod := range pods { //스케줄링 대기중인 파드들 하나씩 스케줄링
-		fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
-		fmt.Print("<Reschedule Pod ADDED> ")
+		if config.Debugg {
+			fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
+			fmt.Print("<Reschedule Pod ADDED> ")
+		}
 		err := SchedulePod(pod)
 		if err != nil {
 			log.Println("SchedulePods>schedulepod error: ", err)

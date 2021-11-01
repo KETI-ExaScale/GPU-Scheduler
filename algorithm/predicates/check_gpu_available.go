@@ -2,13 +2,16 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
 )
 
 func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
+	if config.Debugg {
+		fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
+	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {

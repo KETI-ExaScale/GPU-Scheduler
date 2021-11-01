@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 
@@ -40,7 +41,9 @@ func PatchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 
 //write GPUID to annotation
 func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
-	fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
+	if config.Debugg {
+		fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
+	}
 
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
@@ -59,7 +62,9 @@ func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
 }
 
 func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) error {
-	fmt.Println("[step 3] Binding stage")
+	if config.Debugg {
+		fmt.Println("[step 3] Binding stage")
+	}
 
 	//파드 스펙에 GPU 업데이트
 	err := PatchPodAnnotation(newPod, schedulingResult.BestGPU)

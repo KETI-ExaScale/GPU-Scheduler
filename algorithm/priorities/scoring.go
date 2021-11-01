@@ -16,32 +16,36 @@ package priorities
 import (
 	"fmt"
 
+	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
 )
 
 func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resource.NodeInfo, error) {
-	fmt.Println("[step 2] Scoring Stage")
+	if config.Debugg {
+		fmt.Println("[step 2] Scoring Stage")
 
-	//debugging
-	fmt.Print(" |Before Scoring Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-				continue
+		//debugging
+		fmt.Print(" |Before Scoring Nodes| ")
+		for i, nodeinfo := range nodeInfoList {
+			if !nodeinfo.IsFiltered {
+				if i == 0 {
+					fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+					continue
+				}
+				fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
 			}
-			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
 		}
+		fmt.Println()
 	}
-	fmt.Println()
 
-	//1. LeastGPUMemory
-	err := LeastGPUMemory(nodeInfoList, newPod)
+	//1. LeastRequestedResource
+	err := LeastRequestedResource(nodeInfoList, newPod)
 	if err != nil {
-		fmt.Println("scoring>metricBasedScoring error: ", err)
+		fmt.Println("scoring>LeastRequestedResource error: ", err)
 		return nodeInfoList, err
 	}
 
+	// //debugging
 	// for _, node := range nodeInfoList {
 	// 	for _, gpu := range node.GPUMetrics {
 	// 		fmt.Println("[gpuscore]", gpu.UUID, gpu.GPUScore)

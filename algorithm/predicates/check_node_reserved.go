@@ -2,13 +2,16 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
 )
 
 func CheckNodeReserved(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-10] Filtering > CheckNodeReserved")
+	if config.Debugg {
+		fmt.Println("[step 1-12] Filtering > CheckNodeReserved")
+	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {

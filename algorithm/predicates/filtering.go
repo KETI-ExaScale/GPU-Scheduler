@@ -16,24 +16,26 @@ package predicates
 import (
 	"fmt"
 
+	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
 )
 
 func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*resource.NodeInfo, error) {
-	fmt.Println("[step 1] Filtering statge")
+	if config.Debugg {
+		fmt.Println("[step 1] Filtering statge")
 
-	//debugging
-	fmt.Print(" |Before Filtering Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName)
-				continue
+		fmt.Print(" |Before Filtering Nodes| ")
+		for i, nodeinfo := range nodeInfoList {
+			if !nodeinfo.IsFiltered {
+				if i == 0 {
+					fmt.Print(nodeinfo.NodeName)
+					continue
+				}
+				fmt.Print(" , ", nodeinfo.NodeName)
 			}
-			fmt.Print(" , ", nodeinfo.NodeName)
 		}
+		fmt.Println()
 	}
-	fmt.Println()
 
 	//1. PodFitsHost
 	err := PodFitsHost(nodeInfoList, newPod)
@@ -84,53 +86,54 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		return nil, err
 	}
 
-	//7. NoDiskConflict
+	//8. NoDiskConflict
 	err = NoDiskConflict(nodeInfoList, newPod)
 	if err != nil {
 		fmt.Println("Filtering>NoDiskConflict error: ", err)
 		return nil, err
 	}
 
-	// //8. MaxCSIVolumeCount
+	// //9. MaxCSIVolumeCount
 	// err = MaxCSIVolumeCount(nodeInfoList, newPod)
 	// if err != nil {
 	// 	fmt.Println("Filtering>MaxCSIVolumeCount error: ", err)
 	// 	return nil, err
 	// }
 
-	// //9. NoVolumeZoneConflict
+	// //10. NoVolumeZoneConflict
 	// err = NoVolumeZoneConflict(nodeInfoList, newPod)
 	// if err != nil {
 	// 	fmt.Println("Filtering>NoVolumeZoneConflict error: ", err)
 	// 	return nil, err
 	// }
 
-	// //10. CheckVolumeBinding
+	// //11. CheckVolumeBinding
 	// err = CheckVolumeBinding(nodeInfoList, newPod)
 	// if err != nil {
 	// 	fmt.Println("Filtering>CheckVolumeBinding error: ", err)
 	// 	return nil, err
 	// }
 
-	// //11. CheckNodeReserved
+	// //12. CheckNodeReserved
 	// err = CheckNodeReserved(nodeInfoList, newPod)
 	// if err != nil {
 	// 	fmt.Println("Filtering>CheckNodeReserved error: ", err)
 	// 	return nil, err
 	// }
 
-	//debugging
-	fmt.Print(" |After Filtering Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName)
-				continue
+	if config.Debugg {
+		fmt.Print(" |After Filtering Nodes| ")
+		for i, nodeinfo := range nodeInfoList {
+			if !nodeinfo.IsFiltered {
+				if i == 0 {
+					fmt.Print(nodeinfo.NodeName)
+					continue
+				}
+				fmt.Print(" , ", nodeinfo.NodeName)
 			}
-			fmt.Print(" , ", nodeinfo.NodeName)
 		}
+		fmt.Println()
 	}
-	fmt.Println()
 
 	return nodeInfoList, nil
 

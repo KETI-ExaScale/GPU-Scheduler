@@ -2,20 +2,23 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
 )
 
 func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-7] Filtering > PodFitsResources")
+	if config.Debugg {
+		fmt.Println("[step 1-7] Filtering > PodFitsResources")
+	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			fmt.Println("|1#GPU|", nodeinfo.AvailableGPUCount, " | ", newPod.RequestedResource.GPUMPS)
-			fmt.Println("|2#CPU|#", nodeinfo.AvailableResource.MilliCPU, " | ", newPod.RequestedResource.MilliCPU, " | ", newPod.ExpectedResource.ExMilliCPU)
-			fmt.Println("|3#Memory|", nodeinfo.AvailableResource.Memory, " | ", newPod.RequestedResource.Memory, " | ", newPod.ExpectedResource.ExMemory)
-			fmt.Println("|4#Storage|", nodeinfo.AvailableResource.EphemeralStorage, " | ", newPod.RequestedResource.EphemeralStorage)
+			fmt.Println(" |1#GPU|", nodeinfo.AvailableGPUCount, " | ", newPod.RequestedResource.GPUMPS)
+			fmt.Println(" |2#CPU|#", nodeinfo.AvailableResource.MilliCPU, " | ", newPod.RequestedResource.MilliCPU, " | ", newPod.ExpectedResource.ExMilliCPU)
+			fmt.Println(" |3#Memory|", nodeinfo.AvailableResource.Memory, " | ", newPod.RequestedResource.Memory, " | ", newPod.ExpectedResource.ExMemory)
+			fmt.Println(" |4#Storage|", nodeinfo.AvailableResource.EphemeralStorage, " | ", newPod.RequestedResource.EphemeralStorage)
 
 			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
 				nodeinfo.FilterNode()

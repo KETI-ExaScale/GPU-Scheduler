@@ -2,6 +2,7 @@ package predicates
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 	"log"
@@ -10,7 +11,9 @@ import (
 )
 
 func NoDiskConflict(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	fmt.Println("[step 1-7] Filtering > NoDiskConflict")
+	if config.Debugg {
+		fmt.Println("[step 1-8] Filtering > NoDiskConflict")
+	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {

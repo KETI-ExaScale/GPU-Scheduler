@@ -17,16 +17,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"gpu-scheduler/config"
 	"math"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 
-	"gpu-scheduler/config"
-
 	_ "github.com/influxdata/influxdb1-client" // this is important because of the bug in go mod
-	client "github.com/influxdata/influxdb1-client/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -56,17 +54,19 @@ func GetPods() (*corev1.PodList, error) {
 
 //Update NodeInfo
 func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
-	fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
+	if config.Debugg {
+		fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
+	}
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-	c, err := client.NewHTTPClient(client.HTTPConfig{
-		Addr: config.URL,
-	})
-	if err != nil {
-		fmt.Println("Error creatring influx", err.Error())
-	}
-	defer c.Close()
+	// c, err := client.NewHTTPClient(client.HTTPConfig{
+	// 	Addr: config.URL,
+	// })
+	// if err != nil {
+	// 	fmt.Println("Error creatring influx", err.Error())
+	// }
+	// defer c.Close()
 
 	pods, _ := host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
@@ -85,9 +85,9 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 		CountUpAvailableNodeCount()
 
 		podsInNode, MCIP := getPodsInNode(pods, node.Name)
-		newNodeMetric := GetNodeMetric(c, node.Name, MCIP)
+		newNodeMetric := GetNodeMetric(node.Name, MCIP)
 		availableGPUCount := newNodeMetric.TotalGPUCount
-		newGPUMetrics = GetGPUMetrics(c, newNodeMetric.GPU_UUID, MCIP)
+		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, MCIP)
 
 		//현재 매트릭콜렉터 말고 따로 자원량 수집 중(메트릭에서 단위 맞춰서 가져올예정)
 		for rName, rQuant := range node.Status.Capacity {
@@ -164,14 +164,6 @@ func (g *GPUMetric) FilterGPU(n *NodeInfo) {
 	g.IsFiltered = true
 	n.AvailableGPUCount--
 }
-
-//return whether the node is master or not
-// func IsMaster(node corev1.Node) bool {
-// 	if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
-// 		return true
-// 	}
-// 	return false
-// }
 
 //return whether the node is GPUNode or not
 func IsNonGPUNode(node corev1.Node) bool {

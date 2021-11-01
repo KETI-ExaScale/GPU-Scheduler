@@ -4,7 +4,6 @@ metadata:
   name: nbody-benchmark-mps-test
   namespace: userpod
 spec:
-  nodeName: gpuserver2
   template:
     spec:
       hostIPC: true

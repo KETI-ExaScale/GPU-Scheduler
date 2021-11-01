@@ -7,35 +7,16 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/influxdata/influxdb1-client" // this is important because of the bug in go mod
-	client "github.com/influxdata/influxdb1-client/v2"
-
+	"gpu-scheduler/config"
 	pb "gpu-scheduler/proto"
 
 	"google.golang.org/grpc"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
-func GetNodeMetric(c client.Client, nodeName string, ip string) *NodeMetric {
-	// q := client.Query{
-	// 	Command:  fmt.Sprintf("SELECT last(*) FROM multimetric where NodeName='%s'", nodeName),
-	// 	Database: "metric",
-	// }
-	// response, err := c.Query(q)
-	// if err != nil || response.Error() != nil {
-	// 	fmt.Println("InfluxDB error: ", err)
-	// 	return nil
-	// }
-	// myNodeMetric := response.Results[0].Series[0].Values[0]
+//Get Node/GPU Metrics by gRPC
 
-	// totalGPUCount, _ := strconv.Atoi(fmt.Sprintf("%s", myNodeMetric[1]))
-	// nodeCPU := fmt.Sprintf("%s", myNodeMetric[2])
-	// nodeMemory := fmt.Sprintf("%s", myNodeMetric[3])
-	// uuids := stringToArray(myNodeMetric[5].(string))
-
-	// fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
-
-	//gRPC test
+func GetNodeMetric(nodeName string, ip string) *NodeMetric {
 	host := ip + ":9000"
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -57,7 +38,9 @@ func GetNodeMetric(c client.Client, nodeName string, ip string) *NodeMetric {
 	nodeMemory := result.NodeMemory
 	uuids := stringToArray(result.GpuUuid)
 
-	fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
+	if config.Debugg {
+		fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
+	}
 
 	return &NodeMetric{
 		NodeCPU:       nodeCPU,
@@ -73,29 +56,10 @@ func stringToArray(str string) []string {
 	return strings.Split(str, " ")
 }
 
-func GetGPUMetrics(c client.Client, uuids []string, ip string) []*GPUMetric {
+func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 	var tempGPUMetrics []*GPUMetric
 
 	for _, uuid := range uuids {
-		// q := client.Query{
-		// 	Command:  fmt.Sprintf("SELECT last(*) FROM gpumetric where UUID='%s'", uuid),
-		// 	Database: "metric",
-		// }
-		// response, err := c.Query(q)
-		// if err != nil || response.Error() != nil {
-		// 	fmt.Println("InfluxDB error: ", err)
-		// 	return nil
-		// }
-		// myGPUMetric := response.Results[0].Series[0].Values[0]
-
-		// gpuName := fmt.Sprintf("%s", myGPUMetric[1])
-		// mpsIndex, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[2]))
-		// gpuPower, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[3]))
-		// gpuMemoryTotal, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[5]))
-		// gpuMemoryFree, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[4]))
-		// gpuMemoryUsed, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[6]))
-		// gpuTemperature, _ := strconv.Atoi(fmt.Sprintf("%s", myGPUMetric[7]))
-
 		host := ip + ":9000"
 		conn, err := grpc.Dial(host, grpc.WithInsecure())
 		if err != nil {
@@ -132,10 +96,11 @@ func GetGPUMetrics(c client.Client, uuids []string, ip string) []*GPUMetric {
 			IsFiltered:     false,
 			GPUScore:       0,
 		}
-
-		fmt.Println(" |GPUMetric|", newGPUMetric)
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 
+		if config.Debugg {
+			fmt.Println(" |GPUMetric|", newGPUMetric)
+		}
 	}
 
 	return tempGPUMetrics

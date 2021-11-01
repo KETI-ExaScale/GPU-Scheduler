@@ -15,13 +15,15 @@ package priorities
 
 import (
 	"fmt"
+	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
 	"math"
 )
 
 func MetricBasedScoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-
-	fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
+	if config.Debugg {
+		fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
+	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
