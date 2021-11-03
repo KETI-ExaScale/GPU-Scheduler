@@ -49,7 +49,7 @@ func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.
 				nodeScore += float64(allocable.EphemeralStorage-requested.EphemeralStorage) / float64(allocable.EphemeralStorage) * 20
 			}
 
-			nodeinfo.NodeScore = int(math.Round(nodeScore)) * (1 / config.N)
+			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
 		}
 	}
 

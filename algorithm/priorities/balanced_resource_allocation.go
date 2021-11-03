@@ -44,7 +44,7 @@ func BalancedResourveAllocation(nodeInfoList []*resource.NodeInfo, newPod *resou
 				nodeScore = (1 - variance) * 100
 			}
 
-			nodeinfo.NodeScore = int(math.Round(nodeScore)) * (1 / config.N)
+			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
 		}
 	}
 

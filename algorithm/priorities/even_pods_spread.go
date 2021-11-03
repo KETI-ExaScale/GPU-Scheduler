@@ -15,22 +15,22 @@ package priorities
 
 import (
 	"fmt"
+	"math"
+
 	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
-	"math"
 )
 
-func MetricBasedScoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func EvenPodsSpread(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 	if config.Debugg {
-		fmt.Println("[step 2-2] Scoring > MetricBasedScoring")
+		fmt.Println("[step 2-8] Scoring > EvenPodsSpread")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			nodeScore := float64(nodeinfo.AvailableResource.MilliCPU) / float64(nodeinfo.CapacityResource.MilliCPU) * 50
-			nodeScore += float64(nodeinfo.AvailableResource.Memory) / float64(nodeinfo.CapacityResource.Memory) * 50
-			nodeinfo.NodeScore = int(math.Round(nodeScore))
-			//fmt.Println("[[stageScore]] ", stageScore)
+			nodeScore := float64(0)
+
+			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
 		}
 	}
 

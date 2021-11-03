@@ -60,14 +60,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	host_config, _ := rest.InClusterConfig()
 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-	// c, err := client.NewHTTPClient(client.HTTPConfig{
-	// 	Addr: config.URL,
-	// })
-	// if err != nil {
-	// 	fmt.Println("Error creatring influx", err.Error())
-	// }
-	// defer c.Close()
-
 	pods, _ := host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 
@@ -83,10 +75,11 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 
 		CountUpAvailableNodeCount()
 
-		podsInNode, MCIP := getPodsInNode(pods, node.Name)
-		newNodeMetric := GetNodeMetric(node.Name, MCIP)
+		podsInNode, host := getPodsInNode(pods, node.Name)
+		newNodeMetric := GetNodeMetric(node.Name, host)
 		availableGPUCount := newNodeMetric.TotalGPUCount
-		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, MCIP)
+		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, host)
+		//imageStates := addNodeImageStates(node)
 
 		for rName, rQuant := range node.Status.Allocatable {
 			switch rName {
@@ -112,7 +105,8 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
 			AvailableResource: allocatableres,
-			GRPCHost:          MCIP,
+			GRPCHost:          host,
+			//ImageStates:       imageStates,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -284,3 +278,29 @@ func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string)
 
 	return int(totalGPUScore), bestGPU
 }
+
+// func addNodeImageStates(node *corev1.Node) map[string]*ImageState {
+// 	newImageStates := make(map[string]*ImageState)
+
+// 	for _, image := range node.Status.Images {
+// 		for _, name := range image.Names {
+// 			// update the entry in imageStates
+// 			state, ok := imageStates[name]
+// 			if !ok {
+// 				state = &imageState{
+// 					size:  image.SizeBytes,
+// 					nodes: sets.NewString(node.Name),
+// 				}
+// 				cache.imageStates[name] = state
+// 			} else {
+// 				state.nodes.Insert(node.Name)
+// 			}
+// 			// create the imageStateSummary for this image
+// 			if _, ok := newSum[name]; !ok {
+// 				newSum[name] = cache.createImageStateSummary(state)
+// 			}
+// 		}
+// 	}
+
+// 	return newImageStates
+// }

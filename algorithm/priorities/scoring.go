@@ -52,12 +52,47 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		return nodeInfoList, err
 	}
 
-	//3. RequestedToCapacityRatio
-	err = RequestedToCapacityRatio(nodeInfoList, newPod)
+	// //3. ImageLocality
+	// err = ImageLocality(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("scoring>ImageLocality error: ", err)
+	// 	return nodeInfoList, err
+	// }
+
+	//4. NodeAffinity
+	err = NodeAffinity(nodeInfoList, newPod)
 	if err != nil {
-		fmt.Println("scoring>RequestedToCapacityRatio error: ", err)
+		fmt.Println("scoring>NodeAffinity error: ", err)
 		return nodeInfoList, err
 	}
+
+	//5. TaintToleration
+	err = TaintToleration(nodeInfoList, newPod)
+	if err != nil {
+		fmt.Println("scoring>TaintToleration error: ", err)
+		return nodeInfoList, err
+	}
+
+	// //6. SelectorSpread
+	// err = SelectorSpread(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("scoring>SelectorSpread error: ", err)
+	// 	return nodeInfoList, err
+	// }
+
+	// //7. InterPodAffinity
+	// err = InterPodAffinity(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("scoring>InterPodAffinity error: ", err)
+	// 	return nodeInfoList, err
+	// }
+
+	// //8. EvenPodsSpread
+	// err = EvenPodsSpread(nodeInfoList, newPod)
+	// if err != nil {
+	// 	fmt.Println("scoring>EvenPodsSpread error: ", err)
+	// 	return nodeInfoList, err
+	// }
 
 	//debugging
 	fmt.Print(" |After Scoring Nodes| ")

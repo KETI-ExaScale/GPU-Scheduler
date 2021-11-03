@@ -21,6 +21,7 @@ type NodeInfo struct {
 	AvailableResource  *TempResource
 	CapacityResource   *TempResource
 	GRPCHost           string
+	ImageStates        map[string]*ImageState
 }
 
 // each node metric
@@ -45,6 +46,7 @@ type GPUMetric struct {
 	IsFiltered     bool
 }
 
+//newly added Pod
 type Pod struct {
 	Pod                *corev1.Pod
 	RequestedResource  *Resource
@@ -112,4 +114,11 @@ func newResult() SchedulingResult {
 		TotalScore: 0,
 		BestGPU:    "",
 	}
+}
+
+type ImageState struct {
+	// Size of the image
+	Size int64
+	// Used to track how many nodes have this image
+	NumNodes int
 }

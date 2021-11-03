@@ -21,17 +21,18 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastGPUMemory(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+type topologyPairToScore map[string]map[string]int64
+
+func InterPodAffinity(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 	if config.Debugg {
-		fmt.Println("[step 2-1] Scoring > LeastGPUMemory")
+		fmt.Println("[step 2-7] Scoring > InterPodAffinity")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			for _, gpu := range nodeinfo.GPUMetrics {
-				gpuScore := (float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal)) * 100
-				gpu.GPUScore = int(math.Round(gpuScore))
-			}
+			nodeScore := float64(0)
+
+			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
 		}
 	}
 
