@@ -26,7 +26,7 @@ import (
 )
 
 func NodeAffinity(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
+	if config.Scoring {
 		fmt.Println("[step 2-4] Scoring > NodeAffinity")
 	}
 
@@ -54,8 +54,15 @@ func NodeAffinity(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error
 					}
 				}
 			}
-			nodeScore = float64(weight) * 1 / float64(count)
-			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
+
+			if count > 0 {
+				nodeScore = float64(weight) * 1 / float64(count)
+			}
+
+			nodeinfo.NodeScore += int(math.Round(nodeScore * float64(1/config.N)))
+			if config.Score {
+				fmt.Println("nodeinfo.NodeScore: ", nodeinfo.NodeScore)
+			}
 		}
 	}
 

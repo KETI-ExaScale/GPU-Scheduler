@@ -4,5 +4,5 @@ metadata:
   name: gpu-scheduler-configmap
   namespace: gpu
 data:
-  node-gpu-score-weight : "0.5 0.5"
-  pod-re-schedule-permit : "false"
+  node-gpu-score-weight : "0.7 0.3"
+  pod-re-schedule-permit : "true"

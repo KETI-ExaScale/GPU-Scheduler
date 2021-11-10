@@ -11,7 +11,7 @@
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
 
-// package priorities
+package priorities
 
 // import (
 // 	"fmt"
@@ -27,14 +27,14 @@
 // )
 
 // func SelectorSpread(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-// 	if config.Debugg {
+// 	if config.Scoring {
 // 		fmt.Println("[step 2-6] Scoring > SelectorSpread")
 // 	}
 
 // 	for _, nodeinfo := range nodeInfoList {
 // 		if !nodeinfo.IsFiltered {
 // 			selector := getSelector(newPod.Pod)
-// 			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
+// 			nodeinfo.NodeScore += int(math.Round(nodeScore * float64(1/config.N)))
 // 		}
 // 	}
 

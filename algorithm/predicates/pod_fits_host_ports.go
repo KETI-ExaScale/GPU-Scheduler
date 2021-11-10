@@ -1,17 +1,16 @@
 package predicates
 
 import (
+	"errors"
 	"fmt"
 	"gpu-scheduler/config"
-	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
-	"log"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
 func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
+	if config.Filtering {
 		fmt.Println("[step 1-3] Filtering > PodFitsHostPorts")
 	}
 
@@ -29,16 +28,8 @@ func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 	}
 
 	//no node to allocate
-	if *resource.AvailableNodeCount == 0 {
-		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
-		log.Println(message)
-		event := postevent.MakeNoNodeEvent(newPod, message)
-		err := postevent.PostEvent(event)
-		if err != nil {
-			fmt.Println("PodFitsHostPorts error: ", err)
-			return err
-		}
-		return err
+	if !resource.IsThereAnyNode(newPod) {
+		return errors.New("<Failed Stage> pod_fits_host_ports")
 	}
 
 	return nil

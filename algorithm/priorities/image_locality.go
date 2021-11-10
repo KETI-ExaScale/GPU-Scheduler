@@ -11,7 +11,7 @@
 // // See the License for the specific language governing permissions and
 // // limitations under the License.
 
-// package priorities
+package priorities
 
 // import (
 // 	"fmt"
@@ -30,7 +30,7 @@
 // )
 
 // func ImageLocality(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-// 	if config.Debugg {
+// 	if config.Scoring {
 // 		fmt.Println("[step 2-3] Scoring > ImageLocality")
 // 	}
 

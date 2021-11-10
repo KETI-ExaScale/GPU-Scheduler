@@ -1,26 +1,23 @@
 package predicates
 
 import (
+	"errors"
 	"fmt"
 	"gpu-scheduler/config"
-	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
-	"log"
 )
 
 func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
+	if config.Filtering {
 		fmt.Println("[step 1-7] Filtering > PodFitsResources")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			if config.Debugg {
-				fmt.Println(" |1#GPU|", nodeinfo.AvailableGPUCount, " | ", newPod.RequestedResource.GPUMPS)
-				fmt.Println(" |2#CPU|#", nodeinfo.AvailableResource.MilliCPU, " | ", newPod.RequestedResource.MilliCPU, " | ", newPod.ExpectedResource.ExMilliCPU)
-				fmt.Println(" |3#Memory|", nodeinfo.AvailableResource.Memory, " | ", newPod.RequestedResource.Memory, " | ", newPod.ExpectedResource.ExMemory)
-				fmt.Println(" |4#Storage|", nodeinfo.AvailableResource.EphemeralStorage, " | ", newPod.RequestedResource.EphemeralStorage)
-			}
+			// fmt.Println(" |1#GPU|", nodeinfo.AvailableGPUCount, " | ", newPod.RequestedResource.GPUMPS)
+			// fmt.Println(" |2#CPU|#", nodeinfo.AvailableResource.MilliCPU, " | ", newPod.RequestedResource.MilliCPU, " | ", newPod.ExpectedResource.ExMilliCPU)
+			// fmt.Println(" |3#Memory|", nodeinfo.AvailableResource.Memory, " | ", newPod.RequestedResource.Memory, " | ", newPod.ExpectedResource.ExMemory)
+			// fmt.Println(" |4#Storage|", nodeinfo.AvailableResource.EphemeralStorage, " | ", newPod.RequestedResource.EphemeralStorage)
 
 			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
 				nodeinfo.FilterNode()
@@ -45,16 +42,8 @@ func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 	}
 
 	//no node to allocate
-	if *resource.AvailableNodeCount == 0 {
-		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
-		log.Println(message)
-		event := postevent.MakeNoNodeEvent(newPod, message)
-		err := postevent.PostEvent(event)
-		if err != nil {
-			fmt.Println("PodFitsResources error: ", err)
-			return err
-		}
-		return err
+	if !resource.IsThereAnyNode(newPod) {
+		return errors.New("<Failed Stage> pod_fits_resources")
 	}
 
 	return nil

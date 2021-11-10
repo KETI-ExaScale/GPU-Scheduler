@@ -111,7 +111,7 @@ type SchedulingResult struct {
 func newResult() SchedulingResult {
 	return SchedulingResult{
 		BestNode:   "",
-		TotalScore: 0,
+		TotalScore: -1,
 		BestGPU:    "",
 	}
 }

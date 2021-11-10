@@ -38,7 +38,7 @@ func GetNodeMetric(nodeName string, ip string) *NodeMetric {
 	nodeMemory := result.NodeMemory
 	uuids := stringToArray(result.GpuUuid)
 
-	if config.Debugg {
+	if config.Metric {
 		fmt.Println(" |NodeMetric|", totalGPUCount, nodeCPU, nodeMemory, uuids)
 	}
 
@@ -98,7 +98,7 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 		}
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 
-		if config.Debugg {
+		if config.Metric {
 			fmt.Println(" |GPUMetric|", newGPUMetric)
 		}
 	}

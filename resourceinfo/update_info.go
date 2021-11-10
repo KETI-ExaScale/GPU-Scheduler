@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gpu-scheduler/config"
+	"log"
 	"math"
 	"os/exec"
 	"sort"
@@ -28,40 +29,18 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
-
-//Get Nodes in Cluster
-func GetNodes() (*corev1.NodeList, error) {
-	host_config, _ := rest.InClusterConfig()
-	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
-	nodeList, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-
-	return nodeList, nil
-}
-
-//Get Pods in Cluster
-func GetPods() (*corev1.PodList, error) {
-	host_config, _ := rest.InClusterConfig()
-	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
-	podList, _ := host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-
-	return podList, nil
-}
 
 //Update NodeInfo
 func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	if config.Debugg {
 		fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
 	}
-	host_config, _ := rest.InClusterConfig()
-	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-	pods, _ := host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-	nodes, _ := host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	pods, _ := config.Host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	nodes, _ := config.Host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
 
@@ -169,10 +148,8 @@ func FailedScheduling(pod *corev1.Pod) error {
 		if err != nil {
 			return fmt.Errorf("failed to generate patched fs annotations,reason: %v", err)
 		}
-		host_config, _ := rest.InClusterConfig()
-		host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-		_, err = host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+		_, err = config.Host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 		if err != nil {
 			fmt.Println("FailedScheduling patch error: ", err)
 		}
@@ -181,10 +158,8 @@ func FailedScheduling(pod *corev1.Pod) error {
 		if err != nil {
 			return fmt.Errorf("failed to generate patched fs annotations,reason: %v", err)
 		}
-		host_config, _ := rest.InClusterConfig()
-		host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 
-		_, err = host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+		_, err = config.Host_kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 		if err != nil {
 			fmt.Println("FailedScheduling patch error: ", err)
 		}
@@ -248,7 +223,7 @@ func getTotalScore(node *NodeInfo, requestedGPU int64) (int, string) {
 	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
 	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[0], 64)
 	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[1], 64)
-	//fmt.Println("[[NodeScore]] ", node.NodeScore)
+	fmt.Printf("<node-gpu-score-weight> {Node Weight : %v} {GPU Weight : %v} \n", nodeWeight, gpuWeight)
 	totalGPUScore, bestGPU := getTotalGPUScore(node.GPUMetrics, requestedGPU)
 	totalScore := math.Round(float64(node.NodeScore)*nodeWeight + float64(totalGPUScore)*gpuWeight)
 
@@ -277,6 +252,18 @@ func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string)
 	//fmt.Println("[[NodetotalGPUScoreResult]] ", totalGPUScore, bestGPU)
 
 	return int(totalGPUScore), bestGPU
+}
+
+func IsThereAnyNode(newPod *Pod) bool {
+	if *AvailableNodeCount == 0 {
+		FailedScheduling(newPod.Pod)
+		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
+		log.Println(message)
+		event := MakeNoNodeEvent(newPod, message)
+		PostEvent(event)
+		return false
+	}
+	return true
 }
 
 // func addNodeImageStates(node *corev1.Node) map[string]*ImageState {

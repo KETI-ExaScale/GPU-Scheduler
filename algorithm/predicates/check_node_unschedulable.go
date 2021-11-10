@@ -1,11 +1,10 @@
 package predicates
 
 import (
+	"errors"
 	"fmt"
 	"gpu-scheduler/config"
-	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
-	"log"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -13,7 +12,7 @@ import (
 )
 
 func CheckNodeUnschedulable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
+	if config.Filtering {
 		fmt.Println("[step 1-2] Filtering > CheckNodeUnschedulable")
 	}
 
@@ -33,16 +32,8 @@ func CheckNodeUnschedulable(nodeInfoList []*resource.NodeInfo, newPod *resource.
 	}
 
 	//no node to allocate
-	if *resource.AvailableNodeCount == 0 {
-		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
-		log.Println(message)
-		event := postevent.MakeNoNodeEvent(newPod, message)
-		err := postevent.PostEvent(event)
-		if err != nil {
-			fmt.Println("CheckNodeUnschedulable error: ", err)
-			return err
-		}
-		return err
+	if !resource.IsThereAnyNode(newPod) {
+		return errors.New("<Failed Stage> check_node_unschedulable")
 	}
 
 	return nil

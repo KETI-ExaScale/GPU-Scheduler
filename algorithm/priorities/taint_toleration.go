@@ -21,22 +21,27 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 )
 
 func TaintToleration(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
+	if config.Scoring {
 		fmt.Println("[step 2-5] Scoring > TaintToleration")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			var tolerationsPreferNoSchedule []v1.Toleration
-			tolerationsPreferNoSchedule = getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+			nodeScore := 100
+			tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+			taintsCount := countIntolerableTaintsPreferNoSchedule(nodeinfo.Node.Spec.Taints, tolerationsPreferNoSchedule)
 
-			taintsCount := float64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node.Spec.Taints, tolerationsPreferNoSchedule))
-			nodeScore := 100 - taintsCount/taintsCount*100 //하나라도 있으면 0점...?
-			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
+			if taintsCount > 0 {
+				nodeScore = 0
+			}
+
+			nodeinfo.NodeScore += int(math.Round(float64(nodeScore) * float64(1/config.N)))
+			if config.Score {
+				fmt.Println("nodeinfo.NodeScore: ", nodeinfo.NodeScore)
+			}
 		}
 	}
 
@@ -67,7 +72,7 @@ func countIntolerableTaintsPreferNoSchedule(taints []corev1.Taint, tolerations [
 	return
 }
 
-func TolerationsTolerateTaint(tolerations []v1.Toleration, taint *v1.Taint) bool {
+func TolerationsTolerateTaint(tolerations []corev1.Toleration, taint *corev1.Taint) bool {
 	for i := range tolerations {
 		if tolerations[i].ToleratesTaint(taint) {
 			return true

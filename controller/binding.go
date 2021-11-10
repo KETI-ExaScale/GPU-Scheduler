@@ -20,14 +20,11 @@ import (
 	"time"
 
 	"gpu-scheduler/config"
-	"gpu-scheduler/postevent"
 	resource "gpu-scheduler/resourceinfo"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 func PatchPodAnnotationUUID(bestGPU string) ([]byte, error) {
@@ -45,19 +42,31 @@ func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
 		fmt.Println("[step 3-1] Write GPU UUID in Pod Annotation")
 	}
 
-	host_config, _ := rest.InClusterConfig()
-	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
-
 	patchedAnnotationBytes, err := PatchPodAnnotationUUID(bestGPU)
 	if err != nil {
 		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
 	}
 
-	_, err = host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+	_, err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 	if err != nil {
 		fmt.Println("patchPodAnnotation error: ", err)
 		return err
 	}
+
+	patchedAnnotationBytes2 := []byte(`{"spec":{"template":{"spec":{"containers":[{"name":"nbody1","env":[{"name":"TESTNAME","value":"TESTVALUE"}]}]}}}}`)
+	_, err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes2, metav1.PatchOptions{})
+	if err != nil {
+		fmt.Println("patchPodAnnotation error: ", err)
+		return err
+	}
+
+	// patchedAnnotationBytes3 := []byte(`{"metadata":{"labels":{"app":"web"}}}`)
+	// _, err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes3, metav1.PatchOptions{})
+	// if err != nil {
+	// 	fmt.Println("patchPodAnnotation error: ", err)
+	// 	return err
+	// }
+
 	return nil
 }
 
@@ -87,10 +96,7 @@ func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) e
 		},
 	}
 
-	host_config, _ := rest.InClusterConfig()
-	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
-
-	err = host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Println("binding error: ", err)
 		return err
@@ -101,14 +107,10 @@ func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) e
 
 	// Emit a Kubernetes event that the Pod was scheduled successfully.
 	message := fmt.Sprintf("<Binding Success> Successfully assigned %s", newPod.Pod.ObjectMeta.Name)
-	event := postevent.MakeBindEvent(newPod, message)
+	event := resource.MakeBindEvent(newPod, message)
 	fmt.Println(time.Now().Format("2006-01-02 15:04:05"), message)
+	resource.PostEvent(event)
 	fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
-	err = postevent.PostEvent(event)
-	if nil != err {
-		fmt.Println("binding>postEvent error: ", err)
-		return err
-	}
 
 	return nil
 }

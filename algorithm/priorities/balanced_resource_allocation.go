@@ -21,9 +21,9 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func BalancedResourveAllocation(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
-	if config.Debugg {
-		fmt.Println("[step 2-2] Scoring > BalancedResourveAllocation")
+func BalancedResourceAllocation(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+	if config.Scoring {
+		fmt.Println("[step 2-2] Scoring > BalancedResourceAllocation")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
@@ -35,7 +35,6 @@ func BalancedResourveAllocation(nodeInfoList []*resource.NodeInfo, newPod *resou
 			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)
 			memoryFraction := fractionOfCapacity(requested.Memory, allocable.Memory)
 			volumeFraction := fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage)
-
 			if cpuFraction >= 1 || memoryFraction >= 1 || volumeFraction >= 1 {
 				nodeScore = 0
 			} else {
@@ -44,7 +43,10 @@ func BalancedResourveAllocation(nodeInfoList []*resource.NodeInfo, newPod *resou
 				nodeScore = (1 - variance) * 100
 			}
 
-			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
+			nodeinfo.NodeScore += int(math.Round(nodeScore * float64(1/config.N)))
+			if config.Score {
+				fmt.Println("nodeinfo.NodeScore: ", nodeinfo.NodeScore)
+			}
 		}
 	}
 

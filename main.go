@@ -32,7 +32,7 @@ func main() {
 	go controller.MonitorUnscheduledPods(doneChan, &wg) //새로 들어온 파드 감시 루틴
 
 	wg.Add(1)
-	go controller.ReconcileUnscheduledPods(30, doneChan, &wg) //스케줄링 실패한 파드 30초 간격 재 스케줄링
+	go controller.ReconcileRescheduledPods(30, doneChan, &wg) //스케줄링 실패한 파드 30초 간격 재 스케줄링
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM) //SIGINT를 지정하여 기다리는 루틴
