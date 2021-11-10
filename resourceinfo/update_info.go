@@ -20,7 +20,6 @@ import (
 	"gpu-scheduler/config"
 	"log"
 	"math"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -220,12 +219,12 @@ func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingR
 }
 
 func getTotalScore(node *NodeInfo, requestedGPU int64) (int, string) {
-	weight, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
-	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[0], 64)
-	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weight), " ")[1], 64)
-	fmt.Printf("<node-gpu-score-weight> {Node Weight : %v} {GPU Weight : %v} \n", nodeWeight, gpuWeight)
+	if config.Weight {
+		fmt.Printf("<node-gpu-score-weight> {Node Weight : %v} {GPU Weight : %v} \n", config.NodeWeight, config.GPUWeight)
+	}
+
 	totalGPUScore, bestGPU := getTotalGPUScore(node.GPUMetrics, requestedGPU)
-	totalScore := math.Round(float64(node.NodeScore)*nodeWeight + float64(totalGPUScore)*gpuWeight)
+	totalScore := math.Round(float64(node.NodeScore)*config.NodeWeight + float64(totalGPUScore)*config.GPUWeight)
 
 	//fmt.Println("[[totalScoreResult]] ", totalScore, bestGPU)
 	return int(totalScore), bestGPU
