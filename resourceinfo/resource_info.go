@@ -9,19 +9,19 @@ var AvailableNodeCount = new(int)
 
 // node total information.
 type NodeInfo struct {
-	NodeName           string
-	Node               corev1.Node
-	Pods               []*corev1.Pod
-	AdditionalResource []string
-	NodeScore          int   //default 0
-	IsFiltered         bool  //if filtered true; else false
-	AvailableGPUCount  int64 //get number of available gpu count; default totalGPUCount
-	NodeMetric         *NodeMetric
-	GPUMetrics         []*GPUMetric
-	AvailableResource  *TempResource
-	CapacityResource   *TempResource
-	GRPCHost           string
-	ImageStates        map[string]*ImageState
+	NodeName          string
+	Node              corev1.Node
+	Pods              []*corev1.Pod
+	AvailableGPUCount int64 //get number of available gpu count; default totalGPUCount
+	NodeScore         int   //default 0
+	IsFiltered        bool  //if filtered true; else false
+	NodeMetric        *NodeMetric
+	GPUMetrics        []*GPUMetric
+	AvailableResource *TempResource
+	GRPCHost          string
+	//CapacityResource   *TempResource
+	//AdditionalResource []string
+	//ImageStates map[string]*ImageState
 }
 
 // each node metric
@@ -37,7 +37,7 @@ type NodeMetric struct {
 type GPUMetric struct {
 	GPUName        string
 	UUID           string
-	MPSIndex       int64
+	GPUIndex       int64
 	GPUPower       int64
 	GPUMemoryTotal int64
 	GPUMemoryFree  int64
@@ -45,6 +45,7 @@ type GPUMetric struct {
 	GPUTemperature int64
 	GPUScore       int
 	IsFiltered     bool
+	PodCount       int64
 }
 
 //newly added Pod

@@ -19,7 +19,6 @@ spec:
           resources:
             limits:
               keti.com/mpsgpu: 1
-              gpumemory : "100Mi"
             requests:
               memory: "64Mi"
               cpu: "250m"

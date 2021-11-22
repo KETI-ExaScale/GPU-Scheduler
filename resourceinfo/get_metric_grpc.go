@@ -83,17 +83,18 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 		cancel()
 
 		gpuName := result.GpuName
-		mpsIndex := result.GpuIndex
+		gpuIndex := result.GpuIndex
 		gpuPower := result.GpuPower
 		gpuMemoryTotal := int64(result.GpuTotal)
 		gpuMemoryFree := int64(result.GpuFree)
 		gpuMemoryUsed := int64(result.GpuUsed)
 		gpuTemperature := result.GpuTemp
+		podCount := result.MpsCount
 
 		newGPUMetric := &GPUMetric{
 			GPUName:        gpuName,
 			UUID:           uuid,
-			MPSIndex:       mpsIndex,
+			GPUIndex:       gpuIndex,
 			GPUPower:       gpuPower,
 			GPUMemoryTotal: gpuMemoryTotal,
 			GPUMemoryFree:  gpuMemoryFree,
@@ -101,6 +102,7 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 			GPUTemperature: gpuTemperature,
 			IsFiltered:     false,
 			GPUScore:       0,
+			PodCount:       podCount,
 		}
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 

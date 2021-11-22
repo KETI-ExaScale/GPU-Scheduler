@@ -77,14 +77,13 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			NodeName:          node.Name,
 			Node:              node,
 			Pods:              podsInNode,
+			AvailableGPUCount: newNodeMetric.TotalGPUCount,
 			NodeScore:         0,
 			IsFiltered:        false,
-			AvailableGPUCount: newNodeMetric.TotalGPUCount,
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
 			AvailableResource: allocatableres,
 			GRPCHost:          host,
-			//ImageStates:       imageStates,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -214,7 +213,6 @@ func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingR
 		}
 	}
 
-	//fmt.Println("[[result]] ", result)
 	return result
 }
 
@@ -226,7 +224,6 @@ func getTotalScore(node *NodeInfo, requestedGPU int64) (int, string) {
 	totalGPUScore, bestGPU := getTotalGPUScore(node.GPUMetrics, requestedGPU)
 	totalScore := math.Round(float64(node.NodeScore)*config.NodeWeight + float64(totalGPUScore)*config.GPUWeight)
 
-	//fmt.Println("[[totalScoreResult]] ", totalScore, bestGPU)
 	return int(totalScore), bestGPU
 }
 
@@ -237,18 +234,13 @@ func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string)
 		return gpuMetrics[i].GPUScore > gpuMetrics[j].GPUScore
 	})
 
-	//fmt.Println("[[requestedGPU]] ", requestedGPU)
-
 	bestGPUMetrics := gpuMetrics[:requestedGPU]
 	for _, gpu := range bestGPUMetrics {
 		bestGPU += gpu.UUID + ","
-		//fmt.Println("[[GPUScore]] ", gpu.UUID, gpu.GPUScore)
 		totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
 
 	}
 	totalGPUScore, bestGPU = math.Round(totalGPUScore), strings.Trim(bestGPU, ",")
-
-	//fmt.Println("[[NodetotalGPUScoreResult]] ", totalGPUScore, bestGPU)
 
 	return int(totalGPUScore), bestGPU
 }

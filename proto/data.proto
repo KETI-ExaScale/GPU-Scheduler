@@ -27,6 +27,7 @@ message GPUMessage {
     int64 gpu_index = 6;
     int64 gpu_temp = 7;
     int64 gpu_power = 8;
+    int64 mps_count = 9;
 }
 message GetGPURequest{
     string gpu_uuid = 1;

@@ -100,6 +100,12 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		return nodeInfoList, err
 	}
 
+	//11. LeastAllocatedPodGPU
+	err = LeastAllocatedPodGPU(nodeInfoList, newPod)
+	if err != nil {
+		return nodeInfoList, err
+	}
+
 	if config.Debugg {
 		fmt.Println("<After Scoring>")
 		fmt.Println("         NodeName         |                GPU")

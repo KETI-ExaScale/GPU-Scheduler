@@ -29,18 +29,20 @@ func LeastGPUMemoryUsage(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
-				//requested := newPod.RequestedResource.GPUMemory
+				if !gpu.IsFiltered {
+					//requested := newPod.RequestedResource.GPUMemory
 
-				// if (allocable == 0) || (allocable < requested) {
-				// 	continue
-				// } else {
-				// 	gpuScore = float64(allocable-requested) / float64(allocable) * 100
-				// }
-				gpuScore := float64(gpu.GPUMemoryFree) / float64(config.GPUMemoryTotalMost) * 100
-				gpu.GPUScore += int(math.Round(gpuScore * float64(1/config.G)))
+					// if (allocable == 0) || (allocable < requested) {
+					// 	continue
+					// } else {
+					// 	gpuScore = float64(allocable-requested) / float64(allocable) * 100
+					// }
+					gpuScore := float64(gpu.GPUMemoryFree) / float64(config.GPUMemoryTotalMost) * 100
+					gpu.GPUScore += int(math.Round(gpuScore * float64(1/config.G)))
 
-				if config.Score {
-					fmt.Printf("{%v : %v} \n", gpu.GPUName, gpu.GPUScore)
+					if config.Score {
+						fmt.Printf("{%v : %v} \n", gpu.GPUName, gpu.GPUScore)
+					}
 				}
 			}
 		}

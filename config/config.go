@@ -22,12 +22,13 @@ var (
 	GPUWeight, _        = strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[1], 64)
 	reSchedulePolicy, _ = exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
 	ReSchedule          = "reSchedule :" + string(reSchedulePolicy)
+	LeastPod            = true
 )
 
 //const variable
 const (
 	N             = float64(4)
-	G             = float64(2)
+	G             = float64(3)
 	SchedulerName = "gpu-scheduler"
 )
 

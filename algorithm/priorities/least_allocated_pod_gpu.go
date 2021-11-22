@@ -15,27 +15,27 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 
 	"gpu-scheduler/config"
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastGPUMemoryUtilization(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func LeastAllocatedPodGPU(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 	if config.Scoring {
-		fmt.Println("[step 2-10] Scoring > LeastGPUMemoryUtilization")
+		fmt.Println("[step 2-11] Scoring > LeastAllocatedPodGPU")
 	}
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
 				if !gpu.IsFiltered {
-					gpuScore := float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal) * 100
-					gpu.GPUScore += int(math.Round(gpuScore * float64(1/config.G)))
-
-					if config.Score {
-						fmt.Printf("{%v : %v} \n", gpu.GPUName, gpu.GPUScore)
+					gpuScore := float64(0)
+					if config.LeastPod {
+						gpuScore = float64(gpu.PodCount) * 10
+					} else {
+						gpuScore = 100 - float64(gpu.PodCount)*10
 					}
+					gpu.GPUScore += int(gpuScore * float64(1/config.G))
 				}
 			}
 		}
