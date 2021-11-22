@@ -1,10 +1,6 @@
 package config
 
 import (
-	"os/exec"
-	"strconv"
-	"strings"
-
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -15,21 +11,20 @@ var (
 	Host_kubeClient = kubernetes.NewForConfigOrDie(Host_config)
 )
 
-//Policy
-var (
-	weightPolicy, _     = exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
-	NodeWeight, _       = strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[0], 64)
-	GPUWeight, _        = strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[1], 64)
-	reSchedulePolicy, _ = exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
-	ReSchedule          = "reSchedule :" + string(reSchedulePolicy)
-	LeastPod            = true
-)
-
 //const variable
 const (
 	N             = float64(4)
 	G             = float64(3)
 	SchedulerName = "gpu-scheduler"
+	Policy1       = "node-gpu-score-weight"
+	Policy2       = "pod-re-schedule-permit"
+)
+
+var (
+	NodeWeight float64
+	GPUWeight  float64
+	ReSchedule string
+	LeastPod   = true
 )
 
 var (
@@ -45,7 +40,6 @@ var (
 	Filtering = false
 	Scoring   = false
 	Policy    = true
-	Weight    = true
 )
 
 // //influx 사용 X

@@ -27,16 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// // GetUpdatedPodEnvSpec updates pod env with devId
-// func GetUpdatedPodEnvSpec(oldPod *corev1.Pod) (newPod *corev1.Pod) {
-// 	newPod = oldPod.DeepCopy()
-// 	for i, _ := range newPod.Spec.Containers {
-// 		env := corev1.EnvVar{Name: "TESTNAME", Value: "TESTVALUE"}
-// 		newPod.Spec.Containers[i].Env = append(newPod.Spec.Containers[i].Env, env)
-// 	}
-// 	return newPod
-// }
-
 func PatchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 	patchAnnotations := map[string]interface{}{
 		"metadata": map[string]map[string]string{"annotations": {
@@ -63,13 +53,6 @@ func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
 		return err
 	}
 
-	// patchedAnnotationBytes2 := []byte(`{"spec":{"template":{"spec":{"containers":[{"name":"nbody1","env":[{"name":"TESTNAME","value":"TESTVALUE"}]}]}}}}`)
-	// _, err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Patch(context.TODO(), newPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes2, metav1.PatchOptions{})
-	// if err != nil {
-	// 	fmt.Println("patchPodAnnotation error: ", err)
-	// 	return err
-	// }
-
 	return nil
 }
 
@@ -83,9 +66,6 @@ func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) e
 	if err != nil {
 		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
 	}
-
-	// env := &corev1.EnvVar{Name: "TESTNAME", Value: "TESTVALUE"}
-	// newPod.Pod.Spec.Containers[0].Env = append(newPod.Pod.Spec.Containers[0].Env, *env)
 
 	binding := &corev1.Binding{
 		ObjectMeta: metav1.ObjectMeta{

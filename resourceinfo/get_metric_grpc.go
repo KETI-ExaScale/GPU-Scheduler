@@ -107,7 +107,7 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
 
 		if config.Metric {
-			fmt.Println(" |GPUMetric|", newGPUMetric)
+			fmt.Println(" |GPUMetric |", newGPUMetric)
 		}
 	}
 

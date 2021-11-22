@@ -138,13 +138,10 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 	return rescheduledPods, nil
 }
 
-const (
-	policy1 = "node-gpu-score-weight"
-	policy2 = "pod-re-schedule-permit"
-)
-
 func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("PodName:", pod.ObjectMeta.Name)
+
+	resource.UpdatePolicy()
 
 	if config.Policy {
 		weightPolicy := fmt.Sprintf("{node weight : %v} {gpu weight : %v}", config.NodeWeight, config.GPUWeight)
@@ -152,8 +149,8 @@ func SchedulePod(pod *corev1.Pod) error {
 
 		fmt.Println("<GPU Scheduler Policy List>")
 		fmt.Println("              NAME             |  STATUS |              POLICIES                  ")
-		fmt.Printf(" %-30v| Enabled | %-40v\n", policy1, weightPolicy)
-		fmt.Printf(" %-30v| Enabled | %-40v\n", policy2, reSchedulePolicy)
+		fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy1, weightPolicy)
+		fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy2, reSchedulePolicy)
 	}
 
 	//get a new pod

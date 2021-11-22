@@ -21,6 +21,8 @@ spec:
           value: testtestvalue
           effect: NoExecute
           operator: Equal
+      nodeSelector:
+        name: kk
       containers:
         - name: nginx
           image: "nginx:1.11.1-alpine"

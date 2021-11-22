@@ -20,6 +20,7 @@ import (
 	"gpu-scheduler/config"
 	"log"
 	"math"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -217,9 +218,6 @@ func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingR
 }
 
 func getTotalScore(node *NodeInfo, requestedGPU int64) (int, string) {
-	if config.Weight {
-		fmt.Printf("<node-gpu-score-weight> {Node Weight : %v} {GPU Weight : %v} \n", config.NodeWeight, config.GPUWeight)
-	}
 
 	totalGPUScore, bestGPU := getTotalGPUScore(node.GPUMetrics, requestedGPU)
 	totalScore := math.Round(float64(node.NodeScore)*config.NodeWeight + float64(totalGPUScore)*config.GPUWeight)
@@ -255,6 +253,16 @@ func IsThereAnyNode(newPod *Pod) bool {
 		return false
 	}
 	return true
+}
+
+func UpdatePolicy() {
+	weightPolicy, _ := exec.Command("cat", "/tmp/node-gpu-score-weight").Output()
+	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[0], 64)
+	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[1], 64)
+	reSchedulePolicy, _ := exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
+	reSchedule := string(reSchedulePolicy)
+
+	config.NodeWeight, config.GPUWeight, config.ReSchedule = nodeWeight, gpuWeight, reSchedule
 }
 
 // func addNodeImageStates(node *corev1.Node) map[string]*ImageState {
