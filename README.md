@@ -2,7 +2,7 @@
 
 GPU Schedulerin kubernetes
 
-## Build Scheduelr 
+## Build Scheduler
 
 ```
 ./1.build-scheduler.sh
