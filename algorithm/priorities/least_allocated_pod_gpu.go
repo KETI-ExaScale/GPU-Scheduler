@@ -35,7 +35,11 @@ func LeastAllocatedPodGPU(nodeInfoList []*resource.NodeInfo, newPod *resource.Po
 					} else {
 						gpuScore = float64(gpu.PodCount) * 10
 					}
-					gpu.GPUScore += int(gpuScore * float64(1/config.G))
+					if gpuScore < 0 {
+						gpu.GPUScore = 0
+					} else {
+						gpu.GPUScore += int(gpuScore * float64(1/config.G))
+					}
 				}
 			}
 		}
