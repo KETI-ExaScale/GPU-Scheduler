@@ -36,6 +36,7 @@ import (
 func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 	if config.Debugg {
 		fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
+		fmt.Println("<Sending gRPC request>")
 	}
 
 	pods, _ := config.Host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
@@ -55,7 +56,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 
 		podsInNode, host := getPodsInNode(pods, node.Name)
 		newNodeMetric := GetNodeMetric(node.Name, host)
-		availableGPUCount := newNodeMetric.TotalGPUCount
 		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, host)
 		//imageStates := addNodeImageStates(node)
 
@@ -79,7 +79,7 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			Pods:              podsInNode,
 			NodeScore:         0,
 			IsFiltered:        false,
-			AvailableGPUCount: availableGPUCount,
+			AvailableGPUCount: newNodeMetric.TotalGPUCount,
 			NodeMetric:        newNodeMetric,
 			GPUMetrics:        newGPUMetrics,
 			AvailableResource: allocatableres,

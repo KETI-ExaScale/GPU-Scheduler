@@ -30,6 +30,7 @@ type NodeMetric struct {
 	NodeMemory    int64
 	TotalGPUCount int64
 	GPU_UUID      []string
+	MaxGPUMemory  int64
 }
 
 // each GPU metric
@@ -82,7 +83,7 @@ func NewResource() *Resource {
 		Memory:           0,
 		EphemeralStorage: 0,
 		GPUMPS:           0,
-		GPUMemory:        0,
+		GPUMemory:        1,
 	}
 }
 

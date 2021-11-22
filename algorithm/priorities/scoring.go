@@ -24,18 +24,20 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 	if config.Debugg {
 		fmt.Println("[step 2] Scoring Stage")
 
-		//debugging
-		fmt.Print(" |Before Scoring Nodes| ")
-		for i, nodeinfo := range nodeInfoList {
+		fmt.Println("<Before Scoring>")
+		fmt.Println("         NodeName         |                GPU")
+
+		for _, nodeinfo := range nodeInfoList {
 			if !nodeinfo.IsFiltered {
-				if i == 0 {
-					fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-					continue
-				}
-				fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+				fmt.Printf(" {%-17v : %-3v}|", nodeinfo.NodeName, nodeinfo.NodeScore)
 			}
+			for _, gpu := range nodeinfo.GPUMetrics {
+				if !gpu.IsFiltered {
+					fmt.Printf("{%v : %v} ", gpu.GPUName, gpu.GPUScore)
+				}
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	//1. LeastRequestedResource
@@ -86,18 +88,34 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 	// 	return nodeInfoList, err
 	// }
 
-	//debugging
-	fmt.Print(" |After Scoring Nodes| ")
-	for i, nodeinfo := range nodeInfoList {
-		if !nodeinfo.IsFiltered {
-			if i == 0 {
-				fmt.Print(nodeinfo.NodeName, "=", nodeinfo.NodeScore)
-				continue
+	//9. LeastGPUMemoryUsage
+	err = LeastGPUMemoryUsage(nodeInfoList, newPod)
+	if err != nil {
+		return nodeInfoList, err
+	}
+
+	//10. LeastGPUMemoryUtilization
+	err = LeastGPUMemoryUtilization(nodeInfoList, newPod)
+	if err != nil {
+		return nodeInfoList, err
+	}
+
+	if config.Debugg {
+		fmt.Println("<After Scoring>")
+		fmt.Println("         NodeName         |                GPU")
+
+		for _, nodeinfo := range nodeInfoList {
+			if !nodeinfo.IsFiltered {
+				fmt.Printf(" {%-17v : %-3v}|", nodeinfo.NodeName, nodeinfo.NodeScore)
 			}
-			fmt.Print(" , ", nodeinfo.NodeName, "=", nodeinfo.NodeScore)
+			for _, gpu := range nodeinfo.GPUMetrics {
+				if !gpu.IsFiltered {
+					fmt.Printf("{%v : %v} ", gpu.GPUName, gpu.GPUScore)
+				}
+			}
+			fmt.Println()
 		}
 	}
-	fmt.Println()
 
 	return nodeInfoList, nil
 }

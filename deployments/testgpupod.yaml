@@ -19,17 +19,13 @@ spec:
           resources:
             limits:
               keti.com/mpsgpu: 1
+              gpumemory : "100Mi"
             requests:
               memory: "64Mi"
               cpu: "250m"
           volumeMounts:
             - name: nvidia-mps
-              mountPath: /tmp/nvidia-mps
-          env:
-            - name: A
-              value: "test"    
-          command: ["echo"]
-          args: ["$(TESTNAME) $(A)"]    
+              mountPath: /tmp/nvidia-mps 
       volumes:
         - name: nvidia-mps
           hostPath:

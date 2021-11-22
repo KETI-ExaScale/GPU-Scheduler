@@ -14,16 +14,29 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"gpu-scheduler/config"
 	"gpu-scheduler/controller"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func main() {
 	log.Println("-----Start GPU Scheduler-----")
+
+	//test()
 
 	doneChan := make(chan struct{}) //struct타입을 전송할 수 있는 통신용 채널 생성
 	var wg sync.WaitGroup           //모든 고루틴이 종료될 때 까지 대기할 때 사용
@@ -44,5 +57,42 @@ func main() {
 			wg.Wait() //모든 고루틴이 종료될 때까지 대기
 			os.Exit(0)
 		}
+	}
+}
+
+func test() {
+	host_config, _ := rest.InClusterConfig()
+	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
+	selector := fields.SelectorFromSet(fields.Set{"status.phase": "Failed"})
+	podlist, err := host_kubeClient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), metav1.ListOptions{
+		FieldSelector: selector.String(),
+		LabelSelector: labels.Everything().String(),
+	})
+	if err != nil {
+		fmt.Errorf("failed to get Pods assigned to node")
+	}
+	fmt.Println(podlist)
+	errorpod := podlist.Items[0]
+	newpod := errorpod.DeepCopy()
+
+	binding := &v1.Binding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: errorpod.Name,
+		},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Binding",
+		},
+		Target: v1.ObjectReference{
+			APIVersion: "v1",
+			Kind:       "Node",
+			Name:       "gpuserver2",
+		},
+	}
+	config.Host_kubeClient.CoreV1().Pods(errorpod.Namespace).Delete(context.TODO(), errorpod.Name, metav1.DeleteOptions{})
+
+	err = config.Host_kubeClient.CoreV1().Pods(newpod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Println("binding error: ", err)
 	}
 }

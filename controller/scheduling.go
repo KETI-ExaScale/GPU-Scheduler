@@ -56,7 +56,6 @@ func MonitorUnscheduledPods(done chan struct{}, wg *sync.WaitGroup) {
 					fmt.Println("----------------------------------------------------------------------------------------------------------------------------")
 				}
 			}
-			fmt.Println(pod.Spec.Containers)
 			processorLock.Unlock()
 		case <-done:
 			wg.Done()
@@ -148,10 +147,10 @@ func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("PodName:", pod.ObjectMeta.Name)
 
 	if config.Policy {
-		weightPolicy := fmt.Sprintf("{node weight = %v} {gpu weight = %v}", config.NodeWeight, config.GPUWeight)
+		weightPolicy := fmt.Sprintf("{node weight : %v} {gpu weight : %v}", config.NodeWeight, config.GPUWeight)
 		reSchedulePolicy := "reSchedule :" + config.ReSchedule
 
-		fmt.Println("[GPU Scheduler Policy List]")
+		fmt.Println("<GPU Scheduler Policy List>")
 		fmt.Println("              NAME             |  STATUS |              POLICIES                  ")
 		fmt.Printf(" %-30v| Enabled | %-40v\n", policy1, weightPolicy)
 		fmt.Printf(" %-30v| Enabled | %-40v\n", policy2, reSchedulePolicy)

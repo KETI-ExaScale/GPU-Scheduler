@@ -27,17 +27,22 @@ var (
 //const variable
 const (
 	N             = float64(4)
+	G             = float64(2)
 	SchedulerName = "gpu-scheduler"
+)
+
+var (
+	GPUMemoryTotalMost = int64(0)
 )
 
 //Debugging Print
 var (
 	Debugg    = true
-	Score     = false
-	Metric    = false
+	Score     = true
+	Metric    = true
 	Re        = false
-	Filtering = true
-	Scoring   = true
+	Filtering = false
+	Scoring   = false
 	Policy    = true
 	Weight    = true
 )
