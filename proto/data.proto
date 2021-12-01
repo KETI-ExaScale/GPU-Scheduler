@@ -7,11 +7,13 @@ service User {
 }
 message NodeMessage {
     string node_name = 1;
-    int64 node_cpu = 2;
-    int64 gpu_count = 3;
-    int64 node_memory = 4;
-    string gpu_uuid = 5;
-    int64 max_gpu_memory = 6;
+    int64 node_totalcpu = 2;
+    int64 node_cpu = 3;
+    int64 gpu_count = 4;
+    int64 node_totalmemory = 5;
+    int64 node_memory = 6;
+    string gpu_uuid = 7;
+    int64 max_gpu_memory = 8;
 }
 message GetNodeRequest {
 }

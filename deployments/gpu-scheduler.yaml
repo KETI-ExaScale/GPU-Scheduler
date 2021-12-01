@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   labels:
     app: gpu-scheduler
-  name: gpu-scheduler
+  name: keti-gpu-scheduler
   namespace: gpu
 spec:
   selector:

@@ -73,18 +73,20 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			}
 		}
 
+		fmt.Println("node allocatable : ", allocatableres)
+
 		// make new Node
 		newNodeInfo := &NodeInfo{
-			NodeName:          node.Name,
-			Node:              node,
-			Pods:              podsInNode,
-			AvailableGPUCount: newNodeMetric.TotalGPUCount,
-			NodeScore:         0,
-			IsFiltered:        false,
-			NodeMetric:        newNodeMetric,
-			GPUMetrics:        newGPUMetrics,
-			AvailableResource: allocatableres,
-			GRPCHost:          host,
+			NodeName:            node.Name,
+			Node:                node,
+			Pods:                podsInNode,
+			AvailableGPUCount:   newNodeMetric.TotalGPUCount,
+			NodeScore:           0,
+			IsFiltered:          false,
+			NodeMetric:          newNodeMetric,
+			GPUMetrics:          newGPUMetrics,
+			AllocatableResource: allocatableres,
+			GRPCHost:            host,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -103,7 +105,7 @@ func getPodsInNode(pods *corev1.PodList, nodeName string) ([]*corev1.Pod, string
 	for _, pod := range pods.Items {
 		if strings.Compare(pod.Spec.NodeName, nodeName) == 0 {
 			podsInNode = append(podsInNode, &pod)
-			if strings.HasPrefix(pod.Name, "gpu-metric-collector") {
+			if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
 				MCIP = pod.Status.PodIP
 			}
 		}
@@ -169,7 +171,6 @@ func FailedScheduling(pod *corev1.Pod) error {
 
 func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 	res := NewResource()
-	exres := NewExResource() //예상 자원 사용량, 현재 X
 	additionalResource := make([]string, 0)
 
 	for _, container := range newPod.Spec.Containers {
@@ -183,9 +184,9 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 			case corev1.ResourceCPU:
 				res.MilliCPU += int64(rQuant.MilliValue())
 			case corev1.ResourceMemory:
-				res.Memory += int64(rQuant.MilliValue())
+				res.Memory += int64(rQuant.Value())
 			case corev1.ResourceEphemeralStorage:
-				res.EphemeralStorage += int64(rQuant.MilliValue())
+				res.EphemeralStorage += int64(rQuant.Value())
 			default:
 				// Casting from ResourceName to stirng because rName is ResourceName type
 				resourceName := string(rName)
@@ -194,10 +195,11 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 		}
 	}
 
+	fmt.Println("pod info : ", res)
+
 	return &Pod{
 		Pod:                newPod,
 		RequestedResource:  res,
-		ExpectedResource:   exres,
 		AdditionalResource: additionalResource,
 	}
 }
@@ -260,7 +262,7 @@ func UpdatePolicy() {
 	nodeWeight, _ := strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[0], 64)
 	gpuWeight, _ := strconv.ParseFloat(strings.Split(string(weightPolicy), " ")[1], 64)
 	reSchedulePolicy, _ := exec.Command("cat", "/tmp/pod-re-schedule-permit").Output()
-	reSchedule := string(reSchedulePolicy)
+	reSchedule, _ := strconv.ParseBool(string(reSchedulePolicy))
 
 	config.NodeWeight, config.GPUWeight, config.ReSchedule = nodeWeight, gpuWeight, reSchedule
 }

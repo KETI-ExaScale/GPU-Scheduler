@@ -93,6 +93,40 @@ func ReconcileRescheduledPods(interval int, done chan struct{}, wg *sync.WaitGro
 	}
 }
 
+/*************************************************************************/
+func WatchLowPerformancePod(done chan struct{}, wg *sync.WaitGroup) {
+	changed := WatchPolicy()
+	for {
+		select {
+		case policy := <-changed:
+			if policy {
+				fmt.Println("[C] Low Performance Pod Reschedule Loop")
+			} else {
+				fmt.Println("[D] *Stop* Low Performance Pod Loop")
+			}
+		case <-done:
+			wg.Done()
+			log.Println("Stopped routine.")
+			return
+		}
+	}
+}
+
+func WatchPolicy() <-chan bool {
+	changed := make(chan bool)
+	go func() {
+		for {
+			if config.ReSchedule != config.Temp {
+				changed <- config.ReSchedule
+				config.Temp = config.ReSchedule
+			}
+		}
+	}()
+	return changed
+}
+
+/************************************************************************/
+
 func WatchNewPods() (<-chan *corev1.Pod, <-chan error) {
 	pods := make(chan *corev1.Pod)
 	errc := make(chan error, 1)
@@ -144,13 +178,18 @@ func SchedulePod(pod *corev1.Pod) error {
 	resource.UpdatePolicy()
 
 	if config.Policy {
-		weightPolicy := fmt.Sprintf("{node weight : %v} {gpu weight : %v}", config.NodeWeight, config.GPUWeight)
-		reSchedulePolicy := "reSchedule :" + config.ReSchedule
-
+		// weightPolicy := fmt.Sprintf("{node weight : %v} {gpu weight : %v}", config.NodeWeight, config.GPUWeight)
+		// reSchedulePolicy := "reSchedule :" + strconv.FormatBool(config.ReSchedule)
+		// fmt.Println("<GPU Scheduler Policy List>")
+		// fmt.Println("              NAME             |  STATUS |              POLICIES                  ")
+		// fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy1, weightPolicy)
+		// fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy2, reSchedulePolicy)
 		fmt.Println("<GPU Scheduler Policy List>")
-		fmt.Println("              NAME             |  STATUS |              POLICIES                  ")
-		fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy1, weightPolicy)
-		fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy2, reSchedulePolicy)
+		fmt.Println("1.", config.Policy1)
+		fmt.Println("  1) node weight : ", config.NodeWeight)
+		fmt.Println("  2) gpu weight : ", config.GPUWeight)
+		fmt.Println("2.", config.Policy2)
+		fmt.Println("  1) re schedule : ", config.ReSchedule)
 	}
 
 	//get a new pod

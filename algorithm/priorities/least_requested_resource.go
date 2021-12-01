@@ -28,24 +28,24 @@ func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			allocable := nodeinfo.AvailableResource
+			allocatable := nodeinfo.AllocatableResource
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
 
-			if (allocable.MilliCPU == 0) || (allocable.MilliCPU < requested.MilliCPU) {
+			if (allocatable.MilliCPU == 0) || (allocatable.MilliCPU < requested.MilliCPU) {
 				continue
 			} else {
-				nodeScore += float64(allocable.MilliCPU-requested.MilliCPU) / float64(allocable.MilliCPU) * 40
+				nodeScore += float64(allocatable.MilliCPU-requested.MilliCPU) / float64(allocatable.MilliCPU) * 40
 			}
-			if (allocable.Memory == 0) || (allocable.Memory < requested.Memory) {
+			if (allocatable.Memory == 0) || (allocatable.Memory < requested.Memory) {
 				continue
 			} else {
-				nodeScore += float64(allocable.Memory-requested.Memory) / float64(allocable.Memory) * 40
+				nodeScore += float64(allocatable.Memory-requested.Memory) / float64(allocatable.Memory) * 40
 			}
-			if (allocable.EphemeralStorage == 0) || (allocable.EphemeralStorage < requested.EphemeralStorage) {
+			if (allocatable.EphemeralStorage == 0) || (allocatable.EphemeralStorage < requested.EphemeralStorage) {
 				continue
 			} else {
-				nodeScore += float64(allocable.EphemeralStorage-requested.EphemeralStorage) / float64(allocable.EphemeralStorage) * 20
+				nodeScore += float64(allocatable.EphemeralStorage-requested.EphemeralStorage) / float64(allocatable.EphemeralStorage) * 20
 			}
 			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
 

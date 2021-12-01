@@ -18,11 +18,11 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 				nodeinfo.FilterNode()
 				continue
 			}
-			for _, gpu := range nodeinfo.GPUMetrics {
-				if !GPUFiltering(gpu, newPod.ExpectedResource) {
-					gpu.FilterGPU(nodeinfo)
-				}
-			}
+			// for _, gpu := range nodeinfo.GPUMetrics {
+			// 	if !GPUFiltering(gpu, newPod.ExpectedResource) {
+			// 		gpu.FilterGPU(nodeinfo)
+			// 	}
+			// }
 		}
 	}
 
@@ -35,9 +35,9 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 }
 
 //GPU Filtering by {GPU Memory, Temperature} +a
-func GPUFiltering(gpu *resource.GPUMetric, exGPURequest *resource.ExResource) bool {
+func GPUFiltering(gpu *resource.GPUMetric) bool {
 	//Temperature >= 95, expectationMemory(현재0) > freeMemory
-	if gpu.GPUTemperature >= 95 || exGPURequest.ExGPUMemory > gpu.GPUMemoryFree {
+	if gpu.GPUTemperature >= 95 || 0 > gpu.GPUMemoryFree {
 		return false
 	}
 	return true

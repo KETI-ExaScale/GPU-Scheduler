@@ -28,17 +28,22 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		fmt.Println("         NodeName         |                GPU")
 
 		for _, nodeinfo := range nodeInfoList {
+			temp := true
 			if !nodeinfo.IsFiltered {
-				fmt.Printf(" %-25v|", nodeinfo.NodeName)
-			}
-			for _, gpu := range nodeinfo.GPUMetrics {
-				if !gpu.IsFiltered {
-					fmt.Printf("{%s} ", gpu.GPUName)
+				fmt.Printf(" %-25v", nodeinfo.NodeName)
+
+				for _, gpu := range nodeinfo.GPUMetrics {
+					if !gpu.IsFiltered {
+						if temp {
+							fmt.Printf("|{%s} \n", gpu.UUID)
+							temp = false
+						} else {
+							fmt.Printf("\t\t\t  |{%s} \n", gpu.UUID)
+						}
+					}
 				}
 			}
-			fmt.Println()
 		}
-
 	}
 
 	//1. PodFitsHost
@@ -130,15 +135,22 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 		fmt.Println("         NodeName         |                GPU")
 
 		for _, nodeinfo := range nodeInfoList {
+			temp := true
 			if !nodeinfo.IsFiltered {
-				fmt.Printf(" %-25v|", nodeinfo.NodeName)
-			}
-			for _, gpu := range nodeinfo.GPUMetrics {
-				if !gpu.IsFiltered {
-					fmt.Printf("{%s} ", gpu.GPUName)
+				fmt.Printf(" %-25v", nodeinfo.NodeName)
+
+				for _, gpu := range nodeinfo.GPUMetrics {
+					if !gpu.IsFiltered {
+						if temp {
+							fmt.Printf("|{%s} \n", gpu.UUID)
+							temp = false
+						} else {
+							fmt.Printf("\t\t\t  |{%s} \n", gpu.UUID)
+						}
+
+					}
 				}
 			}
-			fmt.Println()
 		}
 
 	}

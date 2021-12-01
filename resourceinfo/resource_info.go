@@ -9,28 +9,31 @@ var AvailableNodeCount = new(int)
 
 // node total information.
 type NodeInfo struct {
-	NodeName          string
-	Node              corev1.Node
-	Pods              []*corev1.Pod
-	AvailableGPUCount int64 //get number of available gpu count; default totalGPUCount
-	NodeScore         int   //default 0
-	IsFiltered        bool  //if filtered true; else false
-	NodeMetric        *NodeMetric
-	GPUMetrics        []*GPUMetric
-	AvailableResource *TempResource
-	GRPCHost          string
-	//CapacityResource   *TempResource
+	NodeName            string
+	Node                corev1.Node
+	Pods                []*corev1.Pod
+	AvailableGPUCount   int64 //get number of available gpu count; default totalGPUCount
+	NodeScore           int   //default 0
+	IsFiltered          bool  //if filtered true; else false
+	NodeMetric          *NodeMetric
+	GPUMetrics          []*GPUMetric
+	AllocatableResource *TempResource
+	GRPCHost            string
 	//AdditionalResource []string
 	//ImageStates map[string]*ImageState
 }
 
 // each node metric
 type NodeMetric struct {
-	NodeCPU       int64
-	NodeMemory    int64
-	TotalGPUCount int64
-	GPU_UUID      []string
-	MaxGPUMemory  int64
+	NodeMilliCPUTotal int64
+	NodeMilliCPUFree  int64
+	NodeMemoryTotal   int64
+	NodeMemoryFree    int64
+	NodeStorageTotal  int64
+	NodeStorageFree   int64
+	TotalGPUCount     int64
+	GPU_UUID          []string
+	MaxGPUMemory      int64
 }
 
 // each GPU metric
@@ -52,7 +55,6 @@ type GPUMetric struct {
 type Pod struct {
 	Pod                *corev1.Pod
 	RequestedResource  *Resource
-	ExpectedResource   *ExResource
 	AdditionalResource []string
 }
 
@@ -75,7 +77,7 @@ type Resource struct {
 	Memory           int64
 	EphemeralStorage int64
 	GPUMPS           int64
-	GPUMemory        int64 //아직 요청 X
+	GPUMemory        int64
 }
 
 func NewResource() *Resource {
@@ -85,22 +87,6 @@ func NewResource() *Resource {
 		EphemeralStorage: 0,
 		GPUMPS:           0,
 		GPUMemory:        1,
-	}
-}
-
-//예상 리소스 요청량
-type ExResource struct {
-	ExMilliCPU  int64
-	ExMemory    int64
-	ExGPUMemory int64
-}
-
-//예상 자원 사용량 -> 없는값 0으로 통일
-func NewExResource() *ExResource {
-	return &ExResource{
-		ExMilliCPU:  0,
-		ExMemory:    0,
-		ExGPUMemory: 0,
 	}
 }
 

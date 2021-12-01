@@ -28,7 +28,7 @@ func BalancedResourceAllocation(nodeInfoList []*resource.NodeInfo, newPod *resou
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			allocable := nodeinfo.AvailableResource
+			allocable := nodeinfo.AllocatableResource
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
 

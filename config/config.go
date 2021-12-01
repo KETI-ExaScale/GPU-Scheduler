@@ -23,7 +23,8 @@ const (
 var (
 	NodeWeight float64
 	GPUWeight  float64
-	ReSchedule string
+	ReSchedule bool
+	Temp       bool
 	LeastPod   = true
 )
 
@@ -34,7 +35,7 @@ var (
 //Debugging Print
 var (
 	Debugg    = true
-	Score     = true
+	Score     = false
 	Metric    = true
 	Re        = false
 	Filtering = false

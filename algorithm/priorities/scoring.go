@@ -28,15 +28,21 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		fmt.Println("         NodeName         |                GPU")
 
 		for _, nodeinfo := range nodeInfoList {
+			temp := true
 			if !nodeinfo.IsFiltered {
-				fmt.Printf(" {%-17v : %-3v}|", nodeinfo.NodeName, nodeinfo.NodeScore)
-			}
-			for _, gpu := range nodeinfo.GPUMetrics {
-				if !gpu.IsFiltered {
-					fmt.Printf("{%v : %v} ", gpu.GPUName, gpu.GPUScore)
+				fmt.Printf(" {%-17v : %-3v}", nodeinfo.NodeName, nodeinfo.NodeScore)
+
+				for _, gpu := range nodeinfo.GPUMetrics {
+					if !gpu.IsFiltered {
+						if temp {
+							fmt.Printf("|{%v : %v}\n", gpu.UUID, gpu.GPUScore)
+							temp = false
+						} else {
+							fmt.Printf("\t\t\t  |{%v : %v}\n", gpu.UUID, gpu.GPUScore)
+						}
+					}
 				}
 			}
-			fmt.Println()
 		}
 	}
 
@@ -111,15 +117,21 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		fmt.Println("         NodeName         |                GPU")
 
 		for _, nodeinfo := range nodeInfoList {
+			temp := true
 			if !nodeinfo.IsFiltered {
-				fmt.Printf(" {%-17v : %-3v}|", nodeinfo.NodeName, nodeinfo.NodeScore)
-			}
-			for _, gpu := range nodeinfo.GPUMetrics {
-				if !gpu.IsFiltered {
-					fmt.Printf("{%v : %v} ", gpu.GPUName, gpu.GPUScore)
+				fmt.Printf(" {%-17v : %-3v}", nodeinfo.NodeName, nodeinfo.NodeScore)
+
+				for _, gpu := range nodeinfo.GPUMetrics {
+					if !gpu.IsFiltered {
+						if temp {
+							fmt.Printf("|{%v : %v}\n", gpu.UUID, gpu.GPUScore)
+							temp = false
+						} else {
+							fmt.Printf("\t\t\t  |{%v : %v}\n", gpu.UUID, gpu.GPUScore)
+						}
+					}
 				}
 			}
-			fmt.Println()
 		}
 	}
 
