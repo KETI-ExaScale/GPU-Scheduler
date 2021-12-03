@@ -67,7 +67,7 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			case corev1.ResourceMemory:
 				allocatableres.Memory = rQuant.Value()
 			case corev1.ResourceEphemeralStorage:
-				allocatableres.EphemeralStorage = rQuant.Value()
+				allocatableres.Storage = rQuant.Value()
 			default:
 				// Casting from ResourceName to stirng because rName is ResourceName type
 			}
@@ -186,7 +186,7 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 			case corev1.ResourceMemory:
 				res.Memory += int64(rQuant.Value())
 			case corev1.ResourceEphemeralStorage:
-				res.EphemeralStorage += int64(rQuant.Value())
+				res.Storage += int64(rQuant.Value())
 			default:
 				// Casting from ResourceName to stirng because rName is ResourceName type
 				resourceName := string(rName)

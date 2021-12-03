@@ -7,6 +7,7 @@ spec:
   template:
     spec:
       hostIPC: true
+      #hostNetwork: true
       schedulerName: gpu-scheduler
       containers:
         - image: seedjeffwan/nbody:cuda-10.1
@@ -15,13 +16,14 @@ spec:
             - nbody
             - -benchmark
             - -numdevices=1
-            - -numbodies=2000000
+            - -numbodies=1982000
           resources:
             limits:
               keti.com/mpsgpu: 1
+              cpu: "250000m"
             requests:
-              memory: "64Mi"
-              cpu: "250m"
+              memory: "6400Mi"
+              cpu: "25000m"
           volumeMounts:
             - name: nvidia-mps
               mountPath: /tmp/nvidia-mps 

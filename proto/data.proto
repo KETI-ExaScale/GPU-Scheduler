@@ -12,8 +12,10 @@ message NodeMessage {
     int64 gpu_count = 4;
     int64 node_totalmemory = 5;
     int64 node_memory = 6;
-    string gpu_uuid = 7;
-    int64 max_gpu_memory = 8;
+    int64 node_totalstorage = 7;
+    int64 node_storage = 8;
+    string gpu_uuid = 9;
+    int64 max_gpu_memory = 10;
 }
 message GetNodeRequest {
 }

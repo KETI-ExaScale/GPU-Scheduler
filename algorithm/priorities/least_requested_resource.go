@@ -42,12 +42,12 @@ func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.
 			} else {
 				nodeScore += float64(allocatable.Memory-requested.Memory) / float64(allocatable.Memory) * 40
 			}
-			if (allocatable.EphemeralStorage == 0) || (allocatable.EphemeralStorage < requested.EphemeralStorage) {
+			if (allocatable.Storage == 0) || (allocatable.Storage < requested.Storage) {
 				continue
 			} else {
-				nodeScore += float64(allocatable.EphemeralStorage-requested.EphemeralStorage) / float64(allocatable.EphemeralStorage) * 20
+				nodeScore += float64(allocatable.Storage-requested.Storage) / float64(allocatable.Storage) * 20
 			}
-			nodeinfo.NodeScore = int(math.Round(nodeScore * float64(1/config.N)))
+			nodeinfo.NodeScore += int(math.Round(nodeScore * float64(1/config.N)))
 
 			if config.Score {
 				fmt.Println("nodeinfo.NodeScore: ", nodeinfo.NodeScore)

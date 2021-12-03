@@ -34,7 +34,7 @@ func BalancedResourceAllocation(nodeInfoList []*resource.NodeInfo, newPod *resou
 
 			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)
 			memoryFraction := fractionOfCapacity(requested.Memory, allocable.Memory)
-			volumeFraction := fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage)
+			volumeFraction := fractionOfCapacity(requested.Storage, allocable.Storage)
 			if cpuFraction >= 1 || memoryFraction >= 1 || volumeFraction >= 1 {
 				nodeScore = 0
 			} else {

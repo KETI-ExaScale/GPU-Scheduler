@@ -5,4 +5,4 @@ metadata:
   namespace: gpu
 data:
   node-gpu-score-weight : "0.3 0.7"
-  pod-re-schedule-permit : "false"
+  pod-re-schedule-permit : "true"

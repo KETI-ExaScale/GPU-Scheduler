@@ -25,15 +25,15 @@ type NodeInfo struct {
 
 // each node metric
 type NodeMetric struct {
-	NodeMilliCPUTotal int64
-	NodeMilliCPUFree  int64
-	NodeMemoryTotal   int64
-	NodeMemoryFree    int64
-	NodeStorageTotal  int64
-	NodeStorageFree   int64
-	TotalGPUCount     int64
-	GPU_UUID          []string
-	MaxGPUMemory      int64
+	MilliCPUTotal int64
+	MilliCPUUsed  int64
+	MemoryTotal   int64
+	MemoryUsed    int64
+	StorageTotal  int64
+	StorageUsed   int64
+	TotalGPUCount int64
+	GPU_UUID      []string
+	MaxGPUMemory  int64
 }
 
 // each GPU metric
@@ -59,34 +59,34 @@ type Pod struct {
 }
 
 type TempResource struct {
-	MilliCPU         int64
-	Memory           int64
-	EphemeralStorage int64
+	MilliCPU int64
+	Memory   int64
+	Storage  int64
 }
 
 func NewTempResource() *TempResource {
 	return &TempResource{
-		MilliCPU:         0,
-		Memory:           0,
-		EphemeralStorage: 0,
+		MilliCPU: 0,
+		Memory:   0,
+		Storage:  0,
 	}
 }
 
 type Resource struct {
-	MilliCPU         int64
-	Memory           int64
-	EphemeralStorage int64
-	GPUMPS           int64
-	GPUMemory        int64
+	MilliCPU  int64
+	Memory    int64
+	Storage   int64
+	GPUMPS    int64
+	GPUMemory int64
 }
 
 func NewResource() *Resource {
 	return &Resource{
-		MilliCPU:         0,
-		Memory:           0,
-		EphemeralStorage: 0,
-		GPUMPS:           0,
-		GPUMemory:        1,
+		MilliCPU:  0,
+		Memory:    0,
+		Storage:   0,
+		GPUMPS:    0,
+		GPUMemory: 1,
 	}
 }
 

@@ -14,12 +14,22 @@ spec:
         app: nginx
       name: nginx
     spec:
+      schedulerName: gpu-scheduler
       containers:
         - name: nginx
           image: "nginx:1.11.1-alpine"
           ports:
           - containerPort: 80
           resources:
+            limits:
+              keti.com/mpsgpu: 1
             requests:
-              cpu: "125m"
-              memory: "128M"
+              cpu: "1250m"
+              memory: "1280M"
+          volumeMounts:
+           - name: nvidia-mps
+             mountPath: /tmp/nvidia-mps
+      volumes:
+       - name: nvidia-mps
+         hostPath:
+          path: /tmp/nvidia-mps

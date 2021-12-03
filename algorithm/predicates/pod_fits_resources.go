@@ -16,18 +16,22 @@ func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 		if !nodeinfo.IsFiltered {
 
 			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
+				fmt.Println(nodeinfo.AvailableGPUCount, newPod.RequestedResource.GPUMPS)
 				nodeinfo.FilterNode()
 				continue
 			}
-			if nodeinfo.NodeMetric.NodeMilliCPUFree < newPod.RequestedResource.MilliCPU {
+			if nodeinfo.NodeMetric.MilliCPUUsed+newPod.RequestedResource.MilliCPU > nodeinfo.NodeMetric.MilliCPUTotal {
+				fmt.Println(nodeinfo.NodeMetric.MilliCPUUsed, newPod.RequestedResource.MilliCPU)
 				nodeinfo.FilterNode()
 				continue
 			}
-			if nodeinfo.NodeMetric.NodeMemoryFree < newPod.RequestedResource.Memory {
+			if nodeinfo.NodeMetric.MemoryUsed+newPod.RequestedResource.Memory > nodeinfo.NodeMetric.MemoryTotal {
+				fmt.Println(nodeinfo.NodeMetric.MemoryUsed, newPod.RequestedResource.Memory)
 				nodeinfo.FilterNode()
 				continue
 			}
-			if nodeinfo.NodeMetric.NodeStorageFree < newPod.RequestedResource.EphemeralStorage {
+			if nodeinfo.NodeMetric.StorageUsed+newPod.RequestedResource.Storage > nodeinfo.NodeMetric.StorageTotal {
+				fmt.Println(nodeinfo.NodeMetric.StorageUsed, newPod.RequestedResource.Storage)
 				nodeinfo.FilterNode()
 				continue
 			}

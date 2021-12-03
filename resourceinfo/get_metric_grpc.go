@@ -34,10 +34,12 @@ func GetNodeMetric(nodeName string, ip string) *NodeMetric {
 	cancel()
 
 	totalGPUCount := result.GpuCount
-	nodeMilliCPUTotal := result.NodeTotalcpu
-	nodeMilliCPUFree := result.NodeCpu
-	nodeMemoryTotal := result.NodeTotalmemory
-	nodeMemoryFree := result.NodeMemory
+	milliCPUTotal := result.NodeTotalcpu
+	milliCPUUsed := result.NodeCpu
+	memoryTotal := result.NodeTotalmemory
+	memoryUsed := result.NodeMemory
+	storageTotal := result.NodeTotalstorage
+	storageUsed := result.NodeStorage
 	uuids := stringToArray(result.GpuUuid)
 	maxGPUMemory := result.MaxGpuMemory
 
@@ -45,19 +47,23 @@ func GetNodeMetric(nodeName string, ip string) *NodeMetric {
 		config.GPUMemoryTotalMost = maxGPUMemory
 	}
 
-	if config.Metric {
-		fmt.Println(" |NodeMetric|", nodeMilliCPUTotal, nodeMilliCPUFree, nodeMemoryTotal, nodeMemoryFree, totalGPUCount, uuids, maxGPUMemory)
+	newNodeMetric := &NodeMetric{
+		MilliCPUTotal: milliCPUTotal,
+		MilliCPUUsed:  milliCPUUsed,
+		MemoryTotal:   memoryTotal,
+		MemoryUsed:    memoryUsed,
+		StorageTotal:  storageTotal,
+		StorageUsed:   storageUsed,
+		TotalGPUCount: totalGPUCount,
+		GPU_UUID:      uuids,
+		MaxGPUMemory:  maxGPUMemory,
 	}
 
-	return &NodeMetric{
-		NodeMilliCPUTotal: nodeMilliCPUTotal,
-		NodeMilliCPUFree:  nodeMilliCPUFree,
-		NodeMemoryTotal:   nodeMemoryTotal,
-		NodeMemoryFree:    nodeMemoryFree,
-		TotalGPUCount:     totalGPUCount,
-		GPU_UUID:          uuids,
-		MaxGPUMemory:      maxGPUMemory,
+	if config.Metric {
+		fmt.Println(" |NodeMetric|", newNodeMetric)
 	}
+
+	return newNodeMetric
 }
 
 //'[abc abc]' : string -> ['abc' 'abc'] : []string
