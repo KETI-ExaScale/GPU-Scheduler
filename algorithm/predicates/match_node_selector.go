@@ -13,7 +13,7 @@ func MatchNodeSelector(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 	}
 
 	//NodeSelector O
-	if len(newPod.Pod.Spec.NodeSelector) != 0 {
+	if len(newPod.Pod.Spec.NodeSelector) > 0 {
 		for _, nodeinfo := range nodeInfoList {
 			if !nodeinfo.IsFiltered {
 				for key, pod_value := range newPod.Pod.Spec.NodeSelector {

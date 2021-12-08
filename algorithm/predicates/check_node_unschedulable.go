@@ -18,13 +18,11 @@ func CheckNodeUnschedulable(nodeInfoList []*resource.NodeInfo, newPod *resource.
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			// If pod tolerate unschedulable taint, it's also tolerate `node.Spec.Unschedulable`.
 			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(newPod.Pod.Spec.Tolerations, &v1.Taint{
 				Key:    corev1.TaintNodeUnschedulable,
 				Effect: corev1.TaintEffectNoSchedule,
 			})
 
-			// TODO (k82cn): deprecates `node.Spec.Unschedulable` in 1.13.
 			if nodeinfo.Node.Spec.Unschedulable && !podToleratesUnschedulable {
 				nodeinfo.FilterNode()
 			}

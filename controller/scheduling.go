@@ -221,7 +221,7 @@ func SchedulePod(pod *corev1.Pod) error {
 	}
 
 	//Get Best Node/GPU
-	result := resource.GetBestNodeAneGPU(nodes, newPod.RequestedResource.GPUMPS)
+	result := resource.GetBestNodeAndGPU(nodes, newPod.RequestedResource.GPUMPS)
 
 	//[step3] Binding Stage
 	err = Binding(newPod, result)

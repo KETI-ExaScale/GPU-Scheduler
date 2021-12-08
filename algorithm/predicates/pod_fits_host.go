@@ -13,7 +13,7 @@ func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error 
 	}
 
 	//NodeName O
-	if len(newPod.Pod.Spec.NodeName) != 0 {
+	if len(newPod.Pod.Spec.NodeName) > 0 {
 		for _, nodeinfo := range nodeInfoList {
 			if !nodeinfo.IsFiltered {
 				if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {

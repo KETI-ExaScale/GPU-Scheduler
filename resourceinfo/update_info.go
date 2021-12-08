@@ -27,6 +27,7 @@ import (
 
 	_ "github.com/influxdata/influxdb1-client" // this is important because of the bug in go mod
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -42,7 +43,6 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 
 	pods, _ := config.Host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	nodes, _ := config.Host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-
 	for _, node := range nodes.Items {
 
 		//Skip NonGPUNode
@@ -55,9 +55,9 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 
 		CountUpAvailableNodeCount()
 
-		podsInNode, host := getPodsInNode(pods, node.Name)
-		newNodeMetric := GetNodeMetric(node.Name, host)
-		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, host)
+		podsInNode, ip := getMetricCollectorIP(pods, node.Name)
+		newNodeMetric := GetNodeMetric(node.Name, ip)
+		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, ip)
 		//imageStates := addNodeImageStates(node)
 
 		for rName, rQuant := range node.Status.Allocatable {
@@ -86,7 +86,7 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			NodeMetric:          newNodeMetric,
 			GPUMetrics:          newGPUMetrics,
 			AllocatableResource: allocatableres,
-			GRPCHost:            host,
+			GRPCHost:            ip,
 		}
 
 		nodeInfoList = append(nodeInfoList, newNodeInfo)
@@ -99,7 +99,7 @@ func CountUpAvailableNodeCount() {
 	*AvailableNodeCount++
 }
 
-func getPodsInNode(pods *corev1.PodList, nodeName string) ([]*corev1.Pod, string) {
+func getMetricCollectorIP(pods *corev1.PodList, nodeName string) ([]*corev1.Pod, string) {
 	podsInNode, MCIP := make([]*corev1.Pod, 0), ""
 
 	for _, pod := range pods.Items {
@@ -172,12 +172,16 @@ func FailedScheduling(pod *corev1.Pod) error {
 func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 	res := NewResource()
 	additionalResource := make([]string, 0)
+	var gpuMemoryLimit, gpuMemoryRequest int64
+	isGPUPod := false
 
+	//resource: gpumpscount, cpu, memory, storage
 	for _, container := range newPod.Spec.Containers {
 		GPUMPSLimit := container.Resources.Limits["keti.com/mpsgpu"]
 		if GPUMPSLimit.String() != "" {
 			temp, _ := strconv.Atoi(GPUMPSLimit.String())
-			res.GPUMPS += res.GPUMPS + int64(temp)
+			res.GPUMPS += int64(temp)
+			isGPUPod = true
 		}
 		for rName, rQuant := range container.Resources.Requests {
 			switch rName {
@@ -188,23 +192,47 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 			case corev1.ResourceEphemeralStorage:
 				res.Storage += int64(rQuant.Value())
 			default:
-				// Casting from ResourceName to stirng because rName is ResourceName type
 				resourceName := string(rName)
 				additionalResource = append(additionalResource, resourceName)
 			}
 		}
 	}
 
-	fmt.Println("pod info : ", res)
+	//annotation: GPUlimit, GPURequest
+	limit := newPod.ObjectMeta.Annotations["GPUlimits"]
+	request := newPod.ObjectMeta.Annotations["GPUrequest"]
+	if request == "" && limit == "" {
+		gpuMemoryLimit = 0
+		gpuMemoryRequest = 0
+	} else if request != "" && limit == "" {
+		gpuMemoryLimit = 0
+		gpuMemoryRequest = getMemory(request)
+	} else if request == "" && limit != "" {
+		gpuMemoryLimit = getMemory(limit)
+		gpuMemoryRequest = gpuMemoryLimit
+	} else {
+		gpuMemoryLimit = getMemory(limit)
+		gpuMemoryRequest = getMemory(request)
+	}
+
+	fmt.Println("[temp]pod info : ", res, gpuMemoryLimit, gpuMemoryRequest)
 
 	return &Pod{
 		Pod:                newPod,
 		RequestedResource:  res,
+		IsGPUPod:           isGPUPod,
+		GPUMemoryLimit:     gpuMemoryLimit,
+		GPUMemoryRequest:   gpuMemoryRequest,
 		AdditionalResource: additionalResource,
 	}
 }
 
-func GetBestNodeAneGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingResult {
+func getMemory(memory string) int64 {
+	rQuant := resource.MustParse(memory)
+	return int64(rQuant.Value())
+}
+
+func GetBestNodeAndGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingResult {
 	result := newResult()
 
 	for _, node := range nodeInfoList {

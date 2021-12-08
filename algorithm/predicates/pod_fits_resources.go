@@ -14,7 +14,6 @@ func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-
 			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
 				fmt.Println(nodeinfo.AvailableGPUCount, newPod.RequestedResource.GPUMPS)
 				nodeinfo.FilterNode()
@@ -35,7 +34,6 @@ func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 				nodeinfo.FilterNode()
 				continue
 			}
-
 		}
 	}
 

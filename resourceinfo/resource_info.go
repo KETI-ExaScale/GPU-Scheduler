@@ -55,6 +55,9 @@ type GPUMetric struct {
 type Pod struct {
 	Pod                *corev1.Pod
 	RequestedResource  *Resource
+	IsGPUPod           bool
+	GPUMemoryLimit     int64
+	GPUMemoryRequest   int64
 	AdditionalResource []string
 }
 

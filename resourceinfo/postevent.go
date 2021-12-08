@@ -10,7 +10,7 @@ import (
 )
 
 func MakeNoNodeEvent(newPod *Pod, message string) *corev1.Event {
-	event := &corev1.Event{
+	return &corev1.Event{
 		Count:          1,
 		Message:        message,
 		Reason:         "FailedScheduling",
@@ -31,11 +31,10 @@ func MakeNoNodeEvent(newPod *Pod, message string) *corev1.Event {
 			Name:         newPod.Pod.Name,
 		},
 	}
-	return event
 }
 
 func MakeBindEvent(pod *Pod, message string) *corev1.Event {
-	event := &corev1.Event{
+	return &corev1.Event{
 		Count:          1,
 		Message:        message,
 		Reason:         "Scheduled",
@@ -56,7 +55,6 @@ func MakeBindEvent(pod *Pod, message string) *corev1.Event {
 			Name:         pod.Pod.Name,
 		},
 	}
-	return event
 }
 
 func PostEvent(event *corev1.Event) {

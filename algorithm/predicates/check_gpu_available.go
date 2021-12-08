@@ -7,6 +7,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
+//GPUFiltering By GPUMemory
 func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
@@ -14,15 +15,13 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
-				nodeinfo.FilterNode()
-				continue
+			for _, gpu := range nodeinfo.GPUMetrics {
+				if !gpu.IsFiltered {
+					if gpu.GPUMemoryFree < newPod.GPUMemoryRequest {
+						gpu.FilterGPU(nodeinfo)
+					}
+				}
 			}
-			// for _, gpu := range nodeinfo.GPUMetrics {
-			// 	if !GPUFiltering(gpu, newPod.ExpectedResource) {
-			// 		gpu.FilterGPU(nodeinfo)
-			// 	}
-			// }
 		}
 	}
 
@@ -32,13 +31,4 @@ func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 	}
 
 	return nil
-}
-
-//GPU Filtering by {GPU Memory, Temperature} +a
-func GPUFiltering(gpu *resource.GPUMetric) bool {
-	//Temperature >= 95, expectationMemory(현재0) > freeMemory
-	if gpu.GPUTemperature >= 95 || 0 > gpu.GPUMemoryFree {
-		return false
-	}
-	return true
 }
