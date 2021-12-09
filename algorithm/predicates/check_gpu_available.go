@@ -9,6 +9,10 @@ import (
 
 //GPUFiltering By GPUMemory
 func CheckGPUAvailable(newPod *resource.Pod) error {
+	if !newPod.IsGPUPod {
+		return nil
+	}
+
 	if config.Filtering {
 		fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
 	}

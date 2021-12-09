@@ -22,6 +22,10 @@ import (
 )
 
 func LeastGPUMemoryUsage(newPod *resource.Pod) error {
+	if !newPod.IsGPUPod {
+		return nil
+	}
+
 	if config.Scoring {
 		fmt.Println("[step 2-9] Scoring > LeastGPUMemoryUsage")
 	}

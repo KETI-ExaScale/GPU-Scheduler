@@ -21,6 +21,10 @@ import (
 )
 
 func LeastAllocatedPodGPU(newPod *resource.Pod) error {
+	if !newPod.IsGPUPod {
+		return nil
+	}
+
 	if config.Scoring {
 		fmt.Println("[step 2-11] Scoring > LeastAllocatedPodGPU")
 	}

@@ -52,7 +52,7 @@ func NodeUpdate(isGPUPod bool) error {
 
 		podsInNode, ip := getMetricCollectorIP(pods, node.Name)
 		if ip == "" {
-			fmt.Println("{%v} cannot find GPU Metric Collector", node.Name)
+			fmt.Printf("{%v} cannot find GPU Metric Collector\n", node.Name)
 			continue
 		}
 
@@ -74,7 +74,7 @@ func NodeUpdate(isGPUPod bool) error {
 			continue
 		}
 
-		allocatableres := NewTempResource() //temp
+		allocatableres := NewTempResource() //temp 삭제예정
 		for rName, rQuant := range node.Status.Allocatable {
 			switch rName {
 			case corev1.ResourceCPU:

@@ -14,7 +14,7 @@ func PodFitsResources(newPod *resource.Pod) error {
 
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
-			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUCount {
+			if newPod.IsGPUPod && nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUCount {
 				fmt.Println(nodeinfo.AvailableGPUCount, newPod.RequestedResource.GPUCount)
 				nodeinfo.FilterNode()
 				continue
