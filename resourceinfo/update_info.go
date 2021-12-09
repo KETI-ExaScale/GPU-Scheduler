@@ -174,6 +174,7 @@ func FailedScheduling(pod *corev1.Pod) error {
 
 func GetNewPodInfo(newPod *corev1.Pod) {
 	NewPod = InitNewPod()
+	NewPod.Pod = newPod
 
 	//resource: gpumpscount, cpu, memory, storage
 	for _, container := range newPod.Spec.Containers {
@@ -215,7 +216,7 @@ func GetNewPodInfo(newPod *corev1.Pod) {
 		NewPod.GPUMemoryRequest = getMemory(request)
 	}
 
-	fmt.Println("[temp]pod info : ", NewPod)
+	fmt.Println("[temp]pod info : ", NewPod.RequestedResource, NewPod.GPUMemoryLimit, NewPod.GPUMemoryRequest)
 
 	return
 }
