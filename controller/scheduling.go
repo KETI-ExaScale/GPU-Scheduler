@@ -188,11 +188,13 @@ func SchedulePod(pod *corev1.Pod) error {
 	}
 
 	//get a new pod
-	newPod := resource.GetNewPodInfo(pod)
+	resource.GetNewPodInfo(pod)
+
+	resource.NodeCount = resource.InitNodeCount()
+	resource.NodeInfoList = resource.InitNodeInfoList()
 
 	//[step 0] update nodeInfoList
-	resource.NodeCount = resource.InitNodeCount()
-	err := resource.NodeUpdate(newPod.IsGPUPod)
+	err := resource.NodeUpdate()
 	if err != nil {
 		return errors.New("error get multimetric")
 	}
@@ -202,22 +204,22 @@ func SchedulePod(pod *corev1.Pod) error {
 	}
 
 	//[step1] Filtering Stage
-	err = predicates.Filtering(newPod)
+	err = predicates.Filtering()
 	if err != nil {
 		return errors.New("every node is filtered")
 	}
 
 	//[step2] Scoring Stage
-	err = priorities.Scoring(newPod)
+	err = priorities.Scoring()
 	if err != nil {
 		return errors.New("scoring error")
 	}
 
 	//Get Best Node/GPU
-	result := resource.GetBestNodeAndGPU(newPod.RequestedResource.GPUCount)
+	result := resource.GetBestNodeAndGPU()
 
 	//[step3] Binding Stage
-	err = Binding(newPod, result)
+	err = Binding(result)
 	if err != nil {
 		return errors.New("binding error")
 	}

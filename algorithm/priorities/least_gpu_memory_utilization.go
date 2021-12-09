@@ -21,8 +21,8 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastGPUMemoryUtilization(newPod *resource.Pod) error {
-	if !newPod.IsGPUPod {
+func LeastGPUMemoryUtilization() error {
+	if !resource.NewPod.IsGPUPod {
 		return nil
 	}
 

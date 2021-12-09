@@ -21,7 +21,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func BalancedResourceAllocation(newPod *resource.Pod) error {
+func BalancedResourceAllocation() error {
 	if config.Scoring {
 		fmt.Println("[step 2-2] Scoring > BalancedResourceAllocation")
 	}
@@ -29,7 +29,7 @@ func BalancedResourceAllocation(newPod *resource.Pod) error {
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			allocable := nodeinfo.AllocatableResource
-			requested := newPod.RequestedResource
+			requested := resource.NewPod.RequestedResource
 			nodeScore := float64(0)
 
 			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)

@@ -23,7 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func TaintToleration(newPod *resource.Pod) error {
+func TaintToleration() error {
 	if config.Scoring {
 		fmt.Println("[step 2-5] Scoring > TaintToleration")
 	}
@@ -31,7 +31,7 @@ func TaintToleration(newPod *resource.Pod) error {
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			nodeScore := 100
-			tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+			tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(resource.NewPod.Pod.Spec.Tolerations)
 			taintsCount := countIntolerableTaintsPreferNoSchedule(nodeinfo.Node.Spec.Taints, tolerationsPreferNoSchedule)
 
 			if taintsCount > 0 {

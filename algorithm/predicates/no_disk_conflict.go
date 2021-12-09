@@ -9,7 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func NoDiskConflict(newPod *resource.Pod) error {
+func NoDiskConflict() error {
 	if config.Filtering {
 		fmt.Println("[step 1-8] Filtering > NoDiskConflict")
 	}
@@ -17,7 +17,7 @@ func NoDiskConflict(newPod *resource.Pod) error {
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			conflict := false
-			for _, volume := range newPod.Pod.Spec.Volumes {
+			for _, volume := range resource.NewPod.Pod.Spec.Volumes {
 				for _, ev := range nodeinfo.Pods {
 					if isVolumeConflict(volume, ev) {
 						conflict = true
@@ -33,7 +33,7 @@ func NoDiskConflict(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> no_disk_conflict")
 	}
 

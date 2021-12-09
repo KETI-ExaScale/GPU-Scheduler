@@ -11,14 +11,14 @@ import (
 	v1helper "k8s.io/component-helpers/scheduling/corev1"
 )
 
-func CheckNodeUnschedulable(newPod *resource.Pod) error {
+func CheckNodeUnschedulable() error {
 	if config.Filtering {
 		fmt.Println("[step 1-2] Filtering > CheckNodeUnschedulable")
 	}
 
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
-			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(newPod.Pod.Spec.Tolerations, &v1.Taint{
+			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(resource.NewPod.Pod.Spec.Tolerations, &v1.Taint{
 				Key:    corev1.TaintNodeUnschedulable,
 				Effect: corev1.TaintEffectNoSchedule,
 			})
@@ -30,7 +30,7 @@ func CheckNodeUnschedulable(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> check_node_unschedulable")
 	}
 

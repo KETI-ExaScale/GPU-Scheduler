@@ -29,7 +29,7 @@ package priorities
 // 	maxContainerThreshold int64 = 1000 * mb
 // )
 
-// func ImageLocality(newPod *resource.Pod) error {
+// func ImageLocality() error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-3] Scoring > ImageLocality")
 // 	}
@@ -37,8 +37,8 @@ package priorities
 // 	for _, nodeinfo := range resource.NodeInfoList {
 // 		if !nodeinfo.IsFiltered {
 // 			// allocable := nodeinfo.AvailableResource
-// 			// requested := newPod.RequestedResource
-// 			nodeScore := calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, len(nodeInfoList)), len(newPod.Pod.Spec.Containers))
+// 			// requested := resource.NewPod.RequestedResource
+// 			nodeScore := calculatePriority(sumImageScores(nodeinfo, resource.NewPod.Pod.Spec.Containers, len(nodeInfoList)), len(newPod.Pod.Spec.Containers))
 
 // 		}
 // 	}

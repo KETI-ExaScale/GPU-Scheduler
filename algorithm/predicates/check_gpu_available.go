@@ -8,8 +8,8 @@ import (
 )
 
 //GPUFiltering By GPUMemory
-func CheckGPUAvailable(newPod *resource.Pod) error {
-	if !newPod.IsGPUPod {
+func CheckGPUAvailable() error {
+	if !resource.NewPod.IsGPUPod {
 		return nil
 	}
 
@@ -21,7 +21,7 @@ func CheckGPUAvailable(newPod *resource.Pod) error {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
 				if !gpu.IsFiltered {
-					if gpu.GPUMemoryFree < newPod.GPUMemoryRequest {
+					if gpu.GPUMemoryFree < resource.NewPod.GPUMemoryRequest {
 						gpu.FilterGPU(nodeinfo)
 					}
 				}
@@ -30,7 +30,7 @@ func CheckGPUAvailable(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> check_gpu_available")
 	}
 

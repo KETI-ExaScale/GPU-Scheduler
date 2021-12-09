@@ -21,7 +21,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastRequestedResource(newPod *resource.Pod) error {
+func LeastRequestedResource() error {
 	if config.Scoring {
 		fmt.Println("[step 2-1] Scoring > LeastRequestedResource")
 	}
@@ -29,7 +29,7 @@ func LeastRequestedResource(newPod *resource.Pod) error {
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			allocatable := nodeinfo.AllocatableResource
-			requested := newPod.RequestedResource
+			requested := resource.NewPod.RequestedResource
 			nodeScore := float64(0)
 
 			if (allocatable.MilliCPU == 0) || (allocatable.MilliCPU < requested.MilliCPU) {

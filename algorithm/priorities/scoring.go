@@ -20,7 +20,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func Scoring(newPod *resource.Pod) error {
+func Scoring() error {
 	if config.Debugg {
 		fmt.Println("[step 2] Scoring Stage")
 
@@ -47,67 +47,67 @@ func Scoring(newPod *resource.Pod) error {
 	}
 
 	//1. LeastRequestedResource
-	err := LeastRequestedResource(newPod)
+	err := LeastRequestedResource()
 	if err != nil {
 		return err
 	}
 
 	//2. BalancedResourceAllocation
-	err = BalancedResourceAllocation(newPod)
+	err = BalancedResourceAllocation()
 	if err != nil {
 		return err
 	}
 
 	// //3. ImageLocality
-	// err = ImageLocality(newPod)
+	// err = ImageLocality()
 	// if err != nil {
 	// 	return err
 	// }
 
 	//4. NodeAffinity
-	err = NodeAffinity(newPod)
+	err = NodeAffinity()
 	if err != nil {
 		return err
 	}
 
 	//5. TaintToleration
-	err = TaintToleration(newPod)
+	err = TaintToleration()
 	if err != nil {
 		return err
 	}
 
 	// //6. SelectorSpread
-	// err = SelectorSpread(newPod)
+	// err = SelectorSpread()
 	// if err != nil {
 	// 	return err
 	// }
 
 	// //7. InterPodAffinity
-	// err = InterPodAffinity(newPod)
+	// err = InterPodAffinity()
 	// if err != nil {
 	// 	return err
 	// }
 
 	// //8. EvenPodsSpread
-	// err = EvenPodsSpread(newPod)
+	// err = EvenPodsSpread()
 	// if err != nil {
 	// 	return err
 	// }
 
 	//9. LeastGPUMemoryUsage
-	err = LeastGPUMemoryUsage(newPod)
+	err = LeastGPUMemoryUsage()
 	if err != nil {
 		return err
 	}
 
 	//10. LeastGPUMemoryUtilization
-	err = LeastGPUMemoryUtilization(newPod)
+	err = LeastGPUMemoryUtilization()
 	if err != nil {
 		return err
 	}
 
 	//11. LeastAllocatedPodGPU
-	err = LeastAllocatedPodGPU(newPod)
+	err = LeastAllocatedPodGPU()
 	if err != nil {
 		return err
 	}

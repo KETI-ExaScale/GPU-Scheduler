@@ -26,14 +26,14 @@ package priorities
 // 	corelisters "k8s.io/client-go/listers/core/v1"
 // )
 
-// func SelectorSpread(newPod *resource.Pod) error {
+// func SelectorSpread() error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-6] Scoring > SelectorSpread")
 // 	}
 
 // 	for _, nodeinfo := range resource.NodeInfoList {
 // 		if !nodeinfo.IsFiltered {
-// 			selector := getSelector(newPod.Pod)
+// 			selector := getSelector(resource.NewPod.Pod)
 // 			nodeinfo.NodeScore += int(math.Round(nodeScore * float64(1/config.N)))
 // 		}
 // 	}

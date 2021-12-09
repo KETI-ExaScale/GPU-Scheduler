@@ -7,7 +7,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func MaxCSIVolumeCount(newPod *resource.Pod) error {
+func MaxCSIVolumeCount() error {
 	if config.Filtering {
 		fmt.Println("[step 1-9] Filtering > MaxCSIVolumeCount")
 	}
@@ -19,7 +19,7 @@ func MaxCSIVolumeCount(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> csi_volume_count")
 	}
 

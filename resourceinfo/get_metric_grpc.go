@@ -20,14 +20,12 @@ func GetNodeMetric(ip string) (*NodeMetric, error) {
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	defer conn.Close()
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 	grpcClient := pb.NewUserClient(conn)
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
 	r, err := grpcClient.GetNode(ctx, &pb.GetNodeRequest{})
 	if err != nil {
-		fmt.Println(err)
 		cancel()
 		return nil, err
 	}
@@ -80,7 +78,6 @@ func GetGPUMetrics(uuids []string, ip string) ([]*GPUMetric, error) {
 		host := ip + ":9000"
 		conn, err := grpc.Dial(host, grpc.WithInsecure())
 		if err != nil {
-			fmt.Println(err)
 			return nil, err
 		}
 		defer conn.Close()
@@ -89,7 +86,6 @@ func GetGPUMetrics(uuids []string, ip string) ([]*GPUMetric, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		p, err := grpcClient.GetGPU(ctx, &pb.GetGPURequest{GpuUuid: uuid})
 		if err != nil {
-			fmt.Println(err)
 			cancel()
 			return nil, err
 		}

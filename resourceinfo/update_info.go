@@ -35,7 +35,7 @@ import (
 )
 
 //Update NodeInfo
-func NodeUpdate(isGPUPod bool) error {
+func NodeUpdate() error {
 	if config.Debugg {
 		fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
 		fmt.Println("<Sending gRPC request>")
@@ -46,7 +46,7 @@ func NodeUpdate(isGPUPod bool) error {
 
 	for _, node := range nodes.Items {
 
-		if isGPUPod && IsNonGPUNode(node) {
+		if NewPod.IsGPUPod && IsNonGPUNode(node) {
 			continue
 		}
 
@@ -172,31 +172,28 @@ func FailedScheduling(pod *corev1.Pod) error {
 	return nil
 }
 
-func GetNewPodInfo(newPod *corev1.Pod) *Pod {
-	res := NewResource()
-	additionalResource := make([]string, 0)
-	var gpuMemoryLimit, gpuMemoryRequest int64
-	isGPUPod := false
+func GetNewPodInfo(newPod *corev1.Pod) {
+	NewPod = InitNewPod()
 
 	//resource: gpumpscount, cpu, memory, storage
 	for _, container := range newPod.Spec.Containers {
 		GPUMPSLimit := container.Resources.Limits["keti.com/mpsgpu"]
 		if GPUMPSLimit.String() != "" {
 			temp, _ := strconv.Atoi(GPUMPSLimit.String())
-			res.GPUCount += int64(temp)
-			isGPUPod = true
+			NewPod.RequestedResource.GPUCount += int64(temp)
+			NewPod.IsGPUPod = true
 		}
 		for rName, rQuant := range container.Resources.Requests {
 			switch rName {
 			case corev1.ResourceCPU:
-				res.MilliCPU += int64(rQuant.MilliValue())
+				NewPod.RequestedResource.MilliCPU += int64(rQuant.MilliValue())
 			case corev1.ResourceMemory:
-				res.Memory += int64(rQuant.Value())
+				NewPod.RequestedResource.Memory += int64(rQuant.Value())
 			case corev1.ResourceEphemeralStorage:
-				res.Storage += int64(rQuant.Value())
+				NewPod.RequestedResource.Storage += int64(rQuant.Value())
 			default:
 				resourceName := string(rName)
-				additionalResource = append(additionalResource, resourceName)
+				NewPod.AdditionalResource = append(NewPod.AdditionalResource, resourceName)
 			}
 		}
 	}
@@ -205,29 +202,22 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 	limit := newPod.ObjectMeta.Annotations["GPUlimits"]
 	request := newPod.ObjectMeta.Annotations["GPUrequest"]
 	if request == "" && limit == "" {
-		gpuMemoryLimit = 0
-		gpuMemoryRequest = 0
+		NewPod.GPUMemoryLimit = 0
+		NewPod.GPUMemoryRequest = 0
 	} else if request != "" && limit == "" {
-		gpuMemoryLimit = 0
-		gpuMemoryRequest = getMemory(request)
+		NewPod.GPUMemoryLimit = 0
+		NewPod.GPUMemoryRequest = getMemory(request)
 	} else if request == "" && limit != "" {
-		gpuMemoryLimit = getMemory(limit)
-		gpuMemoryRequest = gpuMemoryLimit
+		NewPod.GPUMemoryLimit = getMemory(limit)
+		NewPod.GPUMemoryRequest = NewPod.GPUMemoryLimit
 	} else {
-		gpuMemoryLimit = getMemory(limit)
-		gpuMemoryRequest = getMemory(request)
+		NewPod.GPUMemoryLimit = getMemory(limit)
+		NewPod.GPUMemoryRequest = getMemory(request)
 	}
 
-	fmt.Println("[temp]pod info : ", res, gpuMemoryLimit, gpuMemoryRequest)
+	fmt.Println("[temp]pod info : ", NewPod)
 
-	return &Pod{
-		Pod:                newPod,
-		RequestedResource:  res,
-		IsGPUPod:           isGPUPod,
-		GPUMemoryLimit:     gpuMemoryLimit,
-		GPUMemoryRequest:   gpuMemoryRequest,
-		AdditionalResource: additionalResource,
-	}
+	return
 }
 
 func getMemory(memory string) int64 {
@@ -235,11 +225,11 @@ func getMemory(memory string) int64 {
 	return int64(rQuant.Value())
 }
 
-func GetBestNodeAndGPU(requestedGPU int64) SchedulingResult {
+func GetBestNodeAndGPU() SchedulingResult {
 	result := newResult()
 
 	for _, node := range NodeInfoList {
-		totalScore, bestGPU := getTotalScore(node, requestedGPU)
+		totalScore, bestGPU := getTotalScore(node, NewPod.RequestedResource.GPUCount)
 		if result.TotalScore < totalScore {
 			result.BestNode = node.NodeName
 			result.BestGPU = bestGPU
@@ -276,12 +266,12 @@ func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string)
 	return int(totalGPUScore), bestGPU
 }
 
-func IsThereAnyNode(newPod *Pod) bool {
+func IsThereAnyNode() bool {
 	if NodeCount.NodeAvailable == 0 {
-		FailedScheduling(newPod.Pod)
-		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
+		FailedScheduling(NewPod.Pod)
+		message := fmt.Sprintf("pod (%s) failed to fit in any node", NewPod.Pod.ObjectMeta.Name)
 		log.Println(message)
-		event := MakeNoNodeEvent(newPod, message)
+		event := MakeNoNodeEvent(NewPod, message)
 		PostEvent(event)
 		return false
 	}

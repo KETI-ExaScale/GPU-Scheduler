@@ -45,6 +45,10 @@ type NodeInfo struct {
 	//ImageStates map[string]*ImageState
 }
 
+func InitNodeInfoList() []*NodeInfo {
+	return nil
+}
+
 func (n *NodeInfo) FilterNode() {
 	n.IsFiltered = true
 	NodeCount.NodeAvailable--
@@ -83,6 +87,8 @@ func (g *GPUMetric) FilterGPU(n *NodeInfo) {
 	n.AvailableGPUCount--
 }
 
+var NewPod *Pod
+
 //newly added Pod
 type Pod struct {
 	Pod                *corev1.Pod
@@ -91,6 +97,17 @@ type Pod struct {
 	GPUMemoryLimit     int64
 	GPUMemoryRequest   int64
 	AdditionalResource []string
+}
+
+func InitNewPod() *Pod {
+	return &Pod{
+		Pod:                nil,
+		RequestedResource:  NewResource(),
+		IsGPUPod:           false,
+		GPUMemoryLimit:     0,
+		GPUMemoryRequest:   0,
+		AdditionalResource: make([]string, 0),
+	}
 }
 
 type TempResource struct {

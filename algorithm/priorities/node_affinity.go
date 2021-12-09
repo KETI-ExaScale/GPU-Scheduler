@@ -25,12 +25,12 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 )
 
-func NodeAffinity(newPod *resource.Pod) error {
+func NodeAffinity() error {
 	if config.Scoring {
 		fmt.Println("[step 2-4] Scoring > NodeAffinity")
 	}
 
-	affinity := newPod.Pod.Spec.Affinity
+	affinity := resource.NewPod.Pod.Spec.Affinity
 
 	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {

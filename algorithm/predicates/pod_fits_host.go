@@ -7,16 +7,16 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func PodFitsHost(newPod *resource.Pod) error {
+func PodFitsHost() error {
 	if config.Filtering {
 		fmt.Println("[step 1-1] Filtering > PodFitsHost")
 	}
 
 	//NodeName O
-	if len(newPod.Pod.Spec.NodeName) > 0 {
+	if len(resource.NewPod.Pod.Spec.NodeName) > 0 {
 		for _, nodeinfo := range resource.NodeInfoList {
 			if !nodeinfo.IsFiltered {
-				if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {
+				if resource.NewPod.Pod.Spec.NodeName != nodeinfo.NodeName {
 					nodeinfo.FilterNode()
 				}
 			}
@@ -24,7 +24,7 @@ func PodFitsHost(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> pod_fits_host")
 	}
 

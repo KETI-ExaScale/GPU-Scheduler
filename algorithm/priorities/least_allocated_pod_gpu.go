@@ -20,8 +20,8 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastAllocatedPodGPU(newPod *resource.Pod) error {
-	if !newPod.IsGPUPod {
+func LeastAllocatedPodGPU() error {
+	if !resource.NewPod.IsGPUPod {
 		return nil
 	}
 

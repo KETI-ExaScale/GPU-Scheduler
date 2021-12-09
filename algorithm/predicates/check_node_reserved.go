@@ -7,7 +7,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func CheckNodeReserved(newPod *resource.Pod) error {
+func CheckNodeReserved() error {
 	if config.Filtering {
 		fmt.Println("[step 1-12] Filtering > CheckNodeReserved")
 	}
@@ -21,7 +21,7 @@ func CheckNodeReserved(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> check_node_reserved")
 	}
 

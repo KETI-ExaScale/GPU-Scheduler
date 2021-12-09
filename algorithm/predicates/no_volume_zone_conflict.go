@@ -7,7 +7,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func NoVolumeZoneConflict(newPod *resource.Pod) error {
+func NoVolumeZoneConflict() error {
 	if config.Filtering {
 		fmt.Println("[step 1-10] Filtering > NoVolumeZoneConflict")
 	}
@@ -19,7 +19,7 @@ func NoVolumeZoneConflict(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> no_volume_zone_conflict")
 	}
 

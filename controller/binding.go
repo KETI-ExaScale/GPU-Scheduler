@@ -56,20 +56,20 @@ func PatchPodAnnotation(newPod *resource.Pod, bestGPU string) error {
 	return nil
 }
 
-func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) error {
+func Binding(schedulingResult resource.SchedulingResult) error {
 	if config.Debugg {
 		fmt.Println("[step 3] Binding stage")
 	}
 
 	//파드 스펙에 GPU 업데이트
-	err := PatchPodAnnotation(newPod, schedulingResult.BestGPU)
+	err := PatchPodAnnotation(resource.NewPod, schedulingResult.BestGPU)
 	if err != nil {
 		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
 	}
 
 	binding := &corev1.Binding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: newPod.Pod.Name,
+			Name: resource.NewPod.Pod.Name,
 		},
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -82,7 +82,7 @@ func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) e
 		},
 	}
 
-	err = config.Host_kubeClient.CoreV1().Pods(newPod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	err = config.Host_kubeClient.CoreV1().Pods(resource.NewPod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Println("binding error: ", err)
 		return err
@@ -92,8 +92,8 @@ func Binding(newPod *resource.Pod, schedulingResult resource.SchedulingResult) e
 	fmt.Println("<Result> BestGPU:", schedulingResult.BestGPU)
 
 	// Emit a Kubernetes event that the Pod was scheduled successfully.
-	message := fmt.Sprintf("<Binding Success> Successfully assigned %s", newPod.Pod.ObjectMeta.Name)
-	event := resource.MakeBindEvent(newPod, message)
+	message := fmt.Sprintf("<Binding Success> Successfully assigned %s", resource.NewPod.Pod.ObjectMeta.Name)
+	event := resource.MakeBindEvent(resource.NewPod, message)
 	fmt.Println(time.Now().Format("2006-01-02 15:04:05"), message)
 	resource.PostEvent(event)
 	fmt.Println("----------------------------------------------------------------------------------------------------------------------------")

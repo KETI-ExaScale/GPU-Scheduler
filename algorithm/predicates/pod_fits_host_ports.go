@@ -9,12 +9,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func PodFitsHostPorts(newPod *resource.Pod) error {
+func PodFitsHostPorts() error {
 	if config.Filtering {
 		fmt.Println("[step 1-3] Filtering > PodFitsHostPorts")
 	}
 
-	wantPorts := getContainerPorts(newPod.Pod)
+	wantPorts := getContainerPorts(resource.NewPod.Pod)
 	if len(wantPorts) == 0 {
 		return nil
 	}
@@ -28,7 +28,7 @@ func PodFitsHostPorts(newPod *resource.Pod) error {
 	}
 
 	//no node to allocate
-	if !resource.IsThereAnyNode(newPod) {
+	if !resource.IsThereAnyNode() {
 		return errors.New("<Failed Stage> pod_fits_host_ports")
 	}
 

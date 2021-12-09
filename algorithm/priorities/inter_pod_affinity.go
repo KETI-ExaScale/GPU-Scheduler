@@ -23,7 +23,7 @@ package priorities
 
 // type topologyPairToScore map[string]map[string]int64
 
-// func InterPodAffinity(newPod *resource.Pod) error {
+// func InterPodAffinity() error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-7] Scoring > InterPodAffinity")
 // 	}

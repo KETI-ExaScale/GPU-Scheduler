@@ -20,7 +20,7 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func Filtering(newPod *resource.Pod) error {
+func Filtering() error {
 	if config.Debugg {
 		fmt.Println("[step 1] Filtering statge")
 
@@ -47,84 +47,84 @@ func Filtering(newPod *resource.Pod) error {
 	}
 
 	//1. PodFitsHost
-	err := PodFitsHost(newPod)
+	err := PodFitsHost()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//2. CheckNodeUnschedulable
-	err = CheckNodeUnschedulable(newPod)
+	err = CheckNodeUnschedulable()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//3. PodFitsHostPorts
-	err = PodFitsHostPorts(newPod)
+	err = PodFitsHostPorts()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//4. MatchNodeSelector
-	err = MatchNodeSelector(newPod)
+	err = MatchNodeSelector()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//5. PodToleratesNodeTaints
-	err = PodToleratesNodeTaints(newPod)
+	err = PodToleratesNodeTaints()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//6. CheckGPUAvailable
-	err = CheckGPUAvailable(newPod)
+	err = CheckGPUAvailable()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//7. PodFitsResourcesAndGPU
-	err = PodFitsResources(newPod)
+	err = PodFitsResources()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	//8. NoDiskConflict
-	err = NoDiskConflict(newPod)
+	err = NoDiskConflict()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
 	// //9. MaxCSIVolumeCount
-	// err = MaxCSIVolumeCount(newPod)
+	// err = MaxCSIVolumeCount()
 	// if err != nil {
 	// 	fmt.Println(err)
 	// 	return err
 	// }
 
 	// //10. NoVolumeZoneConflict
-	// err = NoVolumeZoneConflict(newPod)
+	// err = NoVolumeZoneConflict()
 	// if err != nil {
 	// 	fmt.Println(err)
 	// 	return err
 	// }
 
 	// //11. CheckVolumeBinding
-	// err = CheckVolumeBinding(newPod)
+	// err = CheckVolumeBinding()
 	// if err != nil {
 	// 	fmt.Println(err)
 	// 	return err
 	// }
 
 	// //12. CheckNodeReserved
-	// err = CheckNodeReserved(newPod)
+	// err = CheckNodeReserved()
 	// if err != nil {
 	// 	fmt.Println(err)
 	// 	return err

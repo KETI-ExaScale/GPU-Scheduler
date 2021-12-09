@@ -22,7 +22,7 @@ package priorities
 // 	resource "gpu-scheduler/resourceinfo"
 // )
 
-// func EvenPodsSpread(newPod *resource.Pod) error {
+// func EvenPodsSpread() error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-8] Scoring > EvenPodsSpread")
 // 	}
