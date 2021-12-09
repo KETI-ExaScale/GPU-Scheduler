@@ -20,14 +20,14 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*resource.NodeInfo, error) {
+func Filtering(newPod *resource.Pod) error {
 	if config.Debugg {
 		fmt.Println("[step 1] Filtering statge")
 
 		fmt.Println("<Before Filtering>")
 		fmt.Println("         NodeName         |                GPU")
 
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			temp := true
 			if !nodeinfo.IsFiltered {
 				fmt.Printf(" %-25v", nodeinfo.NodeName)
@@ -47,94 +47,94 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 	}
 
 	//1. PodFitsHost
-	err := PodFitsHost(nodeInfoList, newPod)
+	err := PodFitsHost(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//2. CheckNodeUnschedulable
-	err = CheckNodeUnschedulable(nodeInfoList, newPod)
+	err = CheckNodeUnschedulable(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//3. PodFitsHostPorts
-	err = PodFitsHostPorts(nodeInfoList, newPod)
+	err = PodFitsHostPorts(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//4. MatchNodeSelector
-	err = MatchNodeSelector(nodeInfoList, newPod)
+	err = MatchNodeSelector(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//5. PodToleratesNodeTaints
-	err = PodToleratesNodeTaints(nodeInfoList, newPod)
+	err = PodToleratesNodeTaints(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//6. CheckGPUAvailable
-	err = CheckGPUAvailable(nodeInfoList, newPod)
+	err = CheckGPUAvailable(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//7. PodFitsResourcesAndGPU
-	err = PodFitsResources(nodeInfoList, newPod)
+	err = PodFitsResources(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	//8. NoDiskConflict
-	err = NoDiskConflict(nodeInfoList, newPod)
+	err = NoDiskConflict(newPod)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	// //9. MaxCSIVolumeCount
-	// err = MaxCSIVolumeCount(nodeInfoList, newPod)
+	// err = MaxCSIVolumeCount(newPod)
 	// if err != nil {
 	// 	fmt.Println(err)
-	// 	return nil, err
+	// 	return err
 	// }
 
 	// //10. NoVolumeZoneConflict
-	// err = NoVolumeZoneConflict(nodeInfoList, newPod)
+	// err = NoVolumeZoneConflict(newPod)
 	// if err != nil {
 	// 	fmt.Println(err)
-	// 	return nil, err
+	// 	return err
 	// }
 
 	// //11. CheckVolumeBinding
-	// err = CheckVolumeBinding(nodeInfoList, newPod)
+	// err = CheckVolumeBinding(newPod)
 	// if err != nil {
 	// 	fmt.Println(err)
-	// 	return nil, err
+	// 	return err
 	// }
 
 	// //12. CheckNodeReserved
-	// err = CheckNodeReserved(nodeInfoList, newPod)
+	// err = CheckNodeReserved(newPod)
 	// if err != nil {
 	// 	fmt.Println(err)
-	// 	return nil, err
+	// 	return err
 	// }
 
 	if config.Debugg {
 		fmt.Println("<After Filtering>")
 		fmt.Println("         NodeName         |                GPU")
 
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			temp := true
 			if !nodeinfo.IsFiltered {
 				fmt.Printf(" %-25v", nodeinfo.NodeName)
@@ -155,6 +155,6 @@ func Filtering(newPod *resource.Pod, nodeInfoList []*resource.NodeInfo) ([]*reso
 
 	}
 
-	return nodeInfoList, nil
+	return nil
 
 }

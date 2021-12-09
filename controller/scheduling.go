@@ -175,15 +175,10 @@ func GetUnscheduledPods() ([]*corev1.Pod, error) {
 func SchedulePod(pod *corev1.Pod) error {
 	fmt.Println("PodName:", pod.ObjectMeta.Name)
 
+	//policy update
 	resource.UpdatePolicy()
 
 	if config.Policy {
-		// weightPolicy := fmt.Sprintf("{node weight : %v} {gpu weight : %v}", config.NodeWeight, config.GPUWeight)
-		// reSchedulePolicy := "reSchedule :" + strconv.FormatBool(config.ReSchedule)
-		// fmt.Println("<GPU Scheduler Policy List>")
-		// fmt.Println("              NAME             |  STATUS |              POLICIES                  ")
-		// fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy1, weightPolicy)
-		// fmt.Printf(" %-30v| Enabled | %-40v\n", config.Policy2, reSchedulePolicy)
 		fmt.Println("<GPU Scheduler Policy List>")
 		fmt.Println("1.", config.Policy1)
 		fmt.Println("  1) node weight : ", config.NodeWeight)
@@ -195,33 +190,31 @@ func SchedulePod(pod *corev1.Pod) error {
 	//get a new pod
 	newPod := resource.GetNewPodInfo(pod)
 
-	//[step0] update nodeInfoList
-	var nodeInfoList []*resource.NodeInfo
-	*resource.AvailableNodeCount = 0
-
-	nodeInfoList, err := resource.NodeUpdate(nodeInfoList)
+	//[step 0] update nodeInfoList
+	resource.NodeCount = resource.InitNodeCount()
+	err := resource.NodeUpdate(newPod.IsGPUPod)
 	if err != nil {
 		return errors.New("error get multimetric")
 	}
 
-	if *resource.AvailableNodeCount == 0 {
+	if resource.NodeCount.NodeAvailable == 0 {
 		return errors.New("there is no node to schedule")
 	}
 
 	//[step1] Filtering Stage
-	nodes, err := predicates.Filtering(newPod, nodeInfoList)
+	err = predicates.Filtering(newPod)
 	if err != nil {
 		return errors.New("every node is filtered")
 	}
 
 	//[step2] Scoring Stage
-	nodes, err = priorities.Scoring(nodes, newPod)
+	err = priorities.Scoring(newPod)
 	if err != nil {
 		return errors.New("scoring error")
 	}
 
 	//Get Best Node/GPU
-	result := resource.GetBestNodeAndGPU(nodes, newPod.RequestedResource.GPUMPS)
+	result := resource.GetBestNodeAndGPU(newPod.RequestedResource.GPUCount)
 
 	//[step3] Binding Stage
 	err = Binding(newPod, result)

@@ -20,14 +20,14 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resource.NodeInfo, error) {
+func Scoring(newPod *resource.Pod) error {
 	if config.Debugg {
 		fmt.Println("[step 2] Scoring Stage")
 
 		fmt.Println("<Before Scoring>")
 		fmt.Println("         NodeName         |                GPU")
 
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			temp := true
 			if !nodeinfo.IsFiltered {
 				fmt.Printf(" {%-17v : %-3v}", nodeinfo.NodeName, nodeinfo.NodeScore)
@@ -47,76 +47,76 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 	}
 
 	//1. LeastRequestedResource
-	err := LeastRequestedResource(nodeInfoList, newPod)
+	err := LeastRequestedResource(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	//2. BalancedResourceAllocation
-	err = BalancedResourceAllocation(nodeInfoList, newPod)
+	err = BalancedResourceAllocation(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	// //3. ImageLocality
-	// err = ImageLocality(nodeInfoList, newPod)
+	// err = ImageLocality(newPod)
 	// if err != nil {
-	// 	return nodeInfoList, err
+	// 	return err
 	// }
 
 	//4. NodeAffinity
-	err = NodeAffinity(nodeInfoList, newPod)
+	err = NodeAffinity(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	//5. TaintToleration
-	err = TaintToleration(nodeInfoList, newPod)
+	err = TaintToleration(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	// //6. SelectorSpread
-	// err = SelectorSpread(nodeInfoList, newPod)
+	// err = SelectorSpread(newPod)
 	// if err != nil {
-	// 	return nodeInfoList, err
+	// 	return err
 	// }
 
 	// //7. InterPodAffinity
-	// err = InterPodAffinity(nodeInfoList, newPod)
+	// err = InterPodAffinity(newPod)
 	// if err != nil {
-	// 	return nodeInfoList, err
+	// 	return err
 	// }
 
 	// //8. EvenPodsSpread
-	// err = EvenPodsSpread(nodeInfoList, newPod)
+	// err = EvenPodsSpread(newPod)
 	// if err != nil {
-	// 	return nodeInfoList, err
+	// 	return err
 	// }
 
 	//9. LeastGPUMemoryUsage
-	err = LeastGPUMemoryUsage(nodeInfoList, newPod)
+	err = LeastGPUMemoryUsage(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	//10. LeastGPUMemoryUtilization
-	err = LeastGPUMemoryUtilization(nodeInfoList, newPod)
+	err = LeastGPUMemoryUtilization(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	//11. LeastAllocatedPodGPU
-	err = LeastAllocatedPodGPU(nodeInfoList, newPod)
+	err = LeastAllocatedPodGPU(newPod)
 	if err != nil {
-		return nodeInfoList, err
+		return err
 	}
 
 	if config.Debugg {
 		fmt.Println("<After Scoring>")
 		fmt.Println("         NodeName         |                GPU")
 
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			temp := true
 			if !nodeinfo.IsFiltered {
 				fmt.Printf(" {%-17v : %-3v}", nodeinfo.NodeName, nodeinfo.NodeScore)
@@ -135,5 +135,5 @@ func Scoring(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) ([]*resour
 		}
 	}
 
-	return nodeInfoList, nil
+	return nil
 }

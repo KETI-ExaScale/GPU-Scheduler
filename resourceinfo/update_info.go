@@ -35,7 +35,7 @@ import (
 )
 
 //Update NodeInfo
-func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
+func NodeUpdate(isGPUPod bool) error {
 	if config.Debugg {
 		fmt.Println("[step 0] Get Nodes/GPU MultiMetric")
 		fmt.Println("<Sending gRPC request>")
@@ -43,23 +43,38 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 
 	pods, _ := config.Host_kubeClient.CoreV1().Pods(corev1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	nodes, _ := config.Host_kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+
 	for _, node := range nodes.Items {
 
-		//Skip NonGPUNode
+		if isGPUPod && IsNonGPUNode(node) {
+			continue
+		}
+
+		podsInNode, ip := getMetricCollectorIP(pods, node.Name)
+		if ip == "" {
+			fmt.Println("{%v} cannot find GPU Metric Collector", node.Name)
+			continue
+		}
+
+		newNodeMetric, err := GetNodeMetric(ip)
+		if err != nil {
+			fmt.Println("failed to get node metric, reason:", err)
+			continue
+		}
+
+		isGPUNode := true
 		if IsNonGPUNode(node) {
+			isGPUNode = false
+		}
+
+		var newGPUMetrics []*GPUMetric
+		newGPUMetrics, err = GetGPUMetrics(newNodeMetric.GPU_UUID, ip)
+		if err != nil {
+			fmt.Println("failed to get gpu metric, reason:", err)
 			continue
 		}
 
 		allocatableres := NewTempResource() //temp
-		var newGPUMetrics []*GPUMetric
-
-		CountUpAvailableNodeCount()
-
-		podsInNode, ip := getMetricCollectorIP(pods, node.Name)
-		newNodeMetric := GetNodeMetric(node.Name, ip)
-		newGPUMetrics = GetGPUMetrics(newNodeMetric.GPU_UUID, ip)
-		//imageStates := addNodeImageStates(node)
-
 		for rName, rQuant := range node.Status.Allocatable {
 			switch rName {
 			case corev1.ResourceCPU:
@@ -83,20 +98,18 @@ func NodeUpdate(nodeInfoList []*NodeInfo) ([]*NodeInfo, error) {
 			AvailableGPUCount:   newNodeMetric.TotalGPUCount,
 			NodeScore:           0,
 			IsFiltered:          false,
+			IsGPUNode:           isGPUNode,
 			NodeMetric:          newNodeMetric,
 			GPUMetrics:          newGPUMetrics,
 			AllocatableResource: allocatableres,
 			GRPCHost:            ip,
 		}
 
-		nodeInfoList = append(nodeInfoList, newNodeInfo)
+		NodeInfoList = append(NodeInfoList, newNodeInfo)
+		NodeCount.CountUpNodeAvailableCount()
 	}
 
-	return nodeInfoList, nil
-}
-
-func CountUpAvailableNodeCount() {
-	*AvailableNodeCount++
+	return nil
 }
 
 func getMetricCollectorIP(pods *corev1.PodList, nodeName string) ([]*corev1.Pod, string) {
@@ -112,16 +125,6 @@ func getMetricCollectorIP(pods *corev1.PodList, nodeName string) ([]*corev1.Pod,
 	}
 
 	return podsInNode, MCIP
-}
-
-func (n *NodeInfo) FilterNode() {
-	n.IsFiltered = true
-	*AvailableNodeCount--
-}
-
-func (g *GPUMetric) FilterGPU(n *NodeInfo) {
-	g.IsFiltered = true
-	n.AvailableGPUCount--
 }
 
 //return whether the node is GPUNode or not
@@ -180,7 +183,7 @@ func GetNewPodInfo(newPod *corev1.Pod) *Pod {
 		GPUMPSLimit := container.Resources.Limits["keti.com/mpsgpu"]
 		if GPUMPSLimit.String() != "" {
 			temp, _ := strconv.Atoi(GPUMPSLimit.String())
-			res.GPUMPS += int64(temp)
+			res.GPUCount += int64(temp)
 			isGPUPod = true
 		}
 		for rName, rQuant := range container.Resources.Requests {
@@ -232,10 +235,10 @@ func getMemory(memory string) int64 {
 	return int64(rQuant.Value())
 }
 
-func GetBestNodeAndGPU(nodeInfoList []*NodeInfo, requestedGPU int64) SchedulingResult {
+func GetBestNodeAndGPU(requestedGPU int64) SchedulingResult {
 	result := newResult()
 
-	for _, node := range nodeInfoList {
+	for _, node := range NodeInfoList {
 		totalScore, bestGPU := getTotalScore(node, requestedGPU)
 		if result.TotalScore < totalScore {
 			result.BestNode = node.NodeName
@@ -274,7 +277,7 @@ func getTotalGPUScore(gpuMetrics []*GPUMetric, requestedGPU int64) (int, string)
 }
 
 func IsThereAnyNode(newPod *Pod) bool {
-	if *AvailableNodeCount == 0 {
+	if NodeCount.NodeAvailable == 0 {
 		FailedScheduling(newPod.Pod)
 		message := fmt.Sprintf("pod (%s) failed to fit in any node", newPod.Pod.ObjectMeta.Name)
 		log.Println(message)

@@ -3,7 +3,6 @@ package resourceinfo
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -16,19 +15,21 @@ import (
 
 //Get Node/GPU Metrics by gRPC
 
-func GetNodeMetric(nodeName string, ip string) *NodeMetric {
+func GetNodeMetric(ip string) (*NodeMetric, error) {
 	host := ip + ":9000"
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
-	if err != nil {
-		fmt.Println("gRPC Error!!!: ", err)
-	}
 	defer conn.Close()
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
 	grpcClient := pb.NewUserClient(conn)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
 	r, err := grpcClient.GetNode(ctx, &pb.GetNodeRequest{})
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		fmt.Println(err)
+		cancel()
+		return nil, err
 	}
 	result := r.GetNodeMessage()
 	cancel()
@@ -63,7 +64,7 @@ func GetNodeMetric(nodeName string, ip string) *NodeMetric {
 		fmt.Println(" |NodeMetric|", newNodeMetric)
 	}
 
-	return newNodeMetric
+	return newNodeMetric, nil
 }
 
 //'[abc abc]' : string -> ['abc' 'abc'] : []string
@@ -72,14 +73,15 @@ func stringToArray(str string) []string {
 	return strings.Split(str, " ")
 }
 
-func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
-	var tempGPUMetrics []*GPUMetric
+func GetGPUMetrics(uuids []string, ip string) ([]*GPUMetric, error) {
+	var gpuMetrics []*GPUMetric
 
 	for _, uuid := range uuids {
 		host := ip + ":9000"
 		conn, err := grpc.Dial(host, grpc.WithInsecure())
 		if err != nil {
-			fmt.Println("gRPC Error!!!: ", err)
+			fmt.Println(err)
+			return nil, err
 		}
 		defer conn.Close()
 		grpcClient := pb.NewUserClient(conn)
@@ -87,7 +89,9 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		p, err := grpcClient.GetGPU(ctx, &pb.GetGPURequest{GpuUuid: uuid})
 		if err != nil {
-			log.Fatalf("not gpu greet: %v", err)
+			fmt.Println(err)
+			cancel()
+			return nil, err
 		}
 		result := p.GetGpuMessage()
 		cancel()
@@ -114,12 +118,12 @@ func GetGPUMetrics(uuids []string, ip string) []*GPUMetric {
 			GPUScore:       0,
 			PodCount:       podCount,
 		}
-		tempGPUMetrics = append(tempGPUMetrics, newGPUMetric)
+		gpuMetrics = append(gpuMetrics, newGPUMetric)
 
 		if config.Metric {
 			fmt.Println(" |GPUMetric |", newGPUMetric)
 		}
 	}
 
-	return tempGPUMetrics
+	return gpuMetrics, nil
 }

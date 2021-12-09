@@ -9,12 +9,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func NoDiskConflict(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func NoDiskConflict(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-8] Filtering > NoDiskConflict")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			conflict := false
 			for _, volume := range newPod.Pod.Spec.Volumes {

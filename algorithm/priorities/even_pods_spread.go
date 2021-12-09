@@ -22,12 +22,12 @@ package priorities
 // 	resource "gpu-scheduler/resourceinfo"
 // )
 
-// func EvenPodsSpread(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+// func EvenPodsSpread(newPod *resource.Pod) error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-8] Scoring > EvenPodsSpread")
 // 	}
 
-// 	for _, nodeinfo := range nodeInfoList {
+// 	for _, nodeinfo := range resource.NodeInfoList {
 // 		if !nodeinfo.IsFiltered {
 // 			nodeScore := float64(0)
 

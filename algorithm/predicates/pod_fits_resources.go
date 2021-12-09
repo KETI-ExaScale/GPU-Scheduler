@@ -7,15 +7,15 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func PodFitsResources(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func PodFitsResources(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-7] Filtering > PodFitsResources")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
-			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUMPS {
-				fmt.Println(nodeinfo.AvailableGPUCount, newPod.RequestedResource.GPUMPS)
+			if nodeinfo.AvailableGPUCount < newPod.RequestedResource.GPUCount {
+				fmt.Println(nodeinfo.AvailableGPUCount, newPod.RequestedResource.GPUCount)
 				nodeinfo.FilterNode()
 				continue
 			}

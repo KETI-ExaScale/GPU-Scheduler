@@ -7,12 +7,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func MaxCSIVolumeCount(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func MaxCSIVolumeCount(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-9] Filtering > MaxCSIVolumeCount")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 
 		}

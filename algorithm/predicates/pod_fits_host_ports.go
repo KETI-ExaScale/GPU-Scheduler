@@ -9,7 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func PodFitsHostPorts(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-3] Filtering > PodFitsHostPorts")
 	}
@@ -19,7 +19,7 @@ func PodFitsHostPorts(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) e
 		return nil
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			if !fitPorts(wantPorts, nodeinfo) {
 				nodeinfo.FilterNode()

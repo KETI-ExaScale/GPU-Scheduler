@@ -21,12 +21,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastRequestedResource(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func LeastRequestedResource(newPod *resource.Pod) error {
 	if config.Scoring {
 		fmt.Println("[step 2-1] Scoring > LeastRequestedResource")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			allocatable := nodeinfo.AllocatableResource
 			requested := newPod.RequestedResource

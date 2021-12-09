@@ -7,12 +7,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func PodToleratesNodeTaints(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func PodToleratesNodeTaints(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-5] Filtering > PodToleratesNodeTaints")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, taint := range nodeinfo.Node.Spec.Taints {
 				tolerated := false

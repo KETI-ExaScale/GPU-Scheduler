@@ -8,12 +8,12 @@ import (
 )
 
 //GPUFiltering By GPUMemory
-func CheckGPUAvailable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func CheckGPUAvailable(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-6] Filtering > CheckGPUAvailable")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
 				if !gpu.IsFiltered {

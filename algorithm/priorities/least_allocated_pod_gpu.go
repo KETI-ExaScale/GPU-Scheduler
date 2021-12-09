@@ -20,12 +20,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastAllocatedPodGPU(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func LeastAllocatedPodGPU(newPod *resource.Pod) error {
 	if config.Scoring {
 		fmt.Println("[step 2-11] Scoring > LeastAllocatedPodGPU")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
 				if !gpu.IsFiltered {

@@ -7,14 +7,14 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func MatchNodeSelector(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func MatchNodeSelector(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-4] Filtering > MatchNodeSelector")
 	}
 
 	//NodeSelector O
 	if len(newPod.Pod.Spec.NodeSelector) > 0 {
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			if !nodeinfo.IsFiltered {
 				for key, pod_value := range newPod.Pod.Spec.NodeSelector {
 					if node_value, ok := nodeinfo.Node.Labels[key]; ok {

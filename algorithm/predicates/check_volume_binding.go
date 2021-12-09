@@ -7,12 +7,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func CheckVolumeBinding(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func CheckVolumeBinding(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-11] Filtering > CheckVolumeBinding")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 
 		}

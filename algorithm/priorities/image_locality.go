@@ -29,12 +29,12 @@ package priorities
 // 	maxContainerThreshold int64 = 1000 * mb
 // )
 
-// func ImageLocality(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+// func ImageLocality(newPod *resource.Pod) error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-3] Scoring > ImageLocality")
 // 	}
 
-// 	for _, nodeinfo := range nodeInfoList {
+// 	for _, nodeinfo := range resource.NodeInfoList {
 // 		if !nodeinfo.IsFiltered {
 // 			// allocable := nodeinfo.AvailableResource
 // 			// requested := newPod.RequestedResource

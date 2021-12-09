@@ -23,12 +23,12 @@ package priorities
 
 // type topologyPairToScore map[string]map[string]int64
 
-// func InterPodAffinity(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+// func InterPodAffinity(newPod *resource.Pod) error {
 // 	if config.Scoring {
 // 		fmt.Println("[step 2-7] Scoring > InterPodAffinity")
 // 	}
 
-// 	for _, nodeinfo := range nodeInfoList {
+// 	for _, nodeinfo := range resource.NodeInfoList {
 // 		if !nodeinfo.IsFiltered {
 // 			nodeScore, weight := float64(0), int64(0)
 

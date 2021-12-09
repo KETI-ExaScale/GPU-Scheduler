@@ -11,12 +11,12 @@ import (
 	v1helper "k8s.io/component-helpers/scheduling/corev1"
 )
 
-func CheckNodeUnschedulable(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func CheckNodeUnschedulable(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-2] Filtering > CheckNodeUnschedulable")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(newPod.Pod.Spec.Tolerations, &v1.Taint{
 				Key:    corev1.TaintNodeUnschedulable,

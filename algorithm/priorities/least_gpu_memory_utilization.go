@@ -21,12 +21,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func LeastGPUMemoryUtilization(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func LeastGPUMemoryUtilization(newPod *resource.Pod) error {
 	if config.Scoring {
 		fmt.Println("[step 2-10] Scoring > LeastGPUMemoryUtilization")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 			for _, gpu := range nodeinfo.GPUMetrics {
 				if !gpu.IsFiltered {

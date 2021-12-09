@@ -5,7 +5,28 @@ import (
 )
 
 // check node count during filtering stage (golbal var)
-var AvailableNodeCount = new(int)
+//var AvailableNodeCount = new(int)
+var NodeCount *_NodeCount
+
+type _NodeCount struct {
+	NodeAvailable int
+}
+
+func InitNodeCount() *_NodeCount {
+	return &_NodeCount{
+		NodeAvailable: 0,
+	}
+}
+
+func (nc *_NodeCount) CountUpNodeAvailableCount() {
+	nc.NodeAvailable++
+}
+
+func (nc *_NodeCount) CountDownNodeAvailableCount() {
+	nc.NodeAvailable--
+}
+
+var NodeInfoList []*NodeInfo
 
 // node total information.
 type NodeInfo struct {
@@ -15,12 +36,18 @@ type NodeInfo struct {
 	AvailableGPUCount   int64 //get number of available gpu count; default totalGPUCount
 	NodeScore           int   //default 0
 	IsFiltered          bool  //if filtered true; else false
+	IsGPUNode           bool
 	NodeMetric          *NodeMetric
 	GPUMetrics          []*GPUMetric
 	AllocatableResource *TempResource
 	GRPCHost            string
 	//AdditionalResource []string
 	//ImageStates map[string]*ImageState
+}
+
+func (n *NodeInfo) FilterNode() {
+	n.IsFiltered = true
+	NodeCount.NodeAvailable--
 }
 
 // each node metric
@@ -51,6 +78,11 @@ type GPUMetric struct {
 	PodCount       int64
 }
 
+func (g *GPUMetric) FilterGPU(n *NodeInfo) {
+	g.IsFiltered = true
+	n.AvailableGPUCount--
+}
+
 //newly added Pod
 type Pod struct {
 	Pod                *corev1.Pod
@@ -79,7 +111,7 @@ type Resource struct {
 	MilliCPU  int64
 	Memory    int64
 	Storage   int64
-	GPUMPS    int64
+	GPUCount  int64
 	GPUMemory int64
 }
 
@@ -88,7 +120,7 @@ func NewResource() *Resource {
 		MilliCPU:  0,
 		Memory:    0,
 		Storage:   0,
-		GPUMPS:    0,
+		GPUCount:  0,
 		GPUMemory: 1,
 	}
 }

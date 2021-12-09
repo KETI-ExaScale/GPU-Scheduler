@@ -7,14 +7,14 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func PodFitsHost(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func PodFitsHost(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-1] Filtering > PodFitsHost")
 	}
 
 	//NodeName O
 	if len(newPod.Pod.Spec.NodeName) > 0 {
-		for _, nodeinfo := range nodeInfoList {
+		for _, nodeinfo := range resource.NodeInfoList {
 			if !nodeinfo.IsFiltered {
 				if newPod.Pod.Spec.NodeName != nodeinfo.NodeName {
 					nodeinfo.FilterNode()

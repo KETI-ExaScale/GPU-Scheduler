@@ -7,12 +7,12 @@ import (
 	resource "gpu-scheduler/resourceinfo"
 )
 
-func NoVolumeZoneConflict(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) error {
+func NoVolumeZoneConflict(newPod *resource.Pod) error {
 	if config.Filtering {
 		fmt.Println("[step 1-10] Filtering > NoVolumeZoneConflict")
 	}
 
-	for _, nodeinfo := range nodeInfoList {
+	for _, nodeinfo := range resource.NodeInfoList {
 		if !nodeinfo.IsFiltered {
 
 		}
