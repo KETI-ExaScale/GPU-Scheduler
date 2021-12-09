@@ -14,7 +14,9 @@ func CheckNodeReserved(nodeInfoList []*resource.NodeInfo, newPod *resource.Pod) 
 
 	for _, nodeinfo := range nodeInfoList {
 		if !nodeinfo.IsFiltered {
-
+			if nodeinfo.Node.Annotations["reserved"] != "" {
+				nodeinfo.FilterNode()
+			}
 		}
 	}
 
