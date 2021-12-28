@@ -1,6 +1,6 @@
 # scheduler
 
-GPU Scheduler in kubernetes
+GPU Schedulerin kubernetes
 
 ## Build Scheduler
 

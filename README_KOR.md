@@ -10,8 +10,7 @@
 컨테이너간 GPU Sharing을 구현하고 GPU의 MPS동작을 지원한다.
 #### 제공기능
 - 동일 노드 내 GPU 자원 공유
-- 자원 모니터링 기반 스케줄링
-- 뭘 더 넣을까
+- GPU-Metric-Collector의 자원 모니터링 기반 스케줄링
 #### 필요모듈
 - *[GPU-Metric-Collector](https://github.com/KETI-ExaScale/GPU-Metric-Collector)*
 - *[GPU-Device-Plugin](https://github.com/KETI-ExaScale/GPU-Device-Plugin)*
@@ -19,13 +18,13 @@
 ---
 ## 2.구성환경
 모듈 설치는 다음과 같은 환경에서 구성되어야 한다.<br>
-GPU Server/Node에는 GPU 컨테이너 실행을 위한 Nvidia-Docker 설치가 필요하다.
+GPU Server/Node에는 GPU 컨테이너 실행을 위한 Nvidia-Docker 설치가 필요하다.<br>
 - Kubernetes 
 - Docker / Nvidia-Docker
 클러스터 내에 'gpu' 네임스페이스가 있어야 한다. 다음과 같이 생성한다.<br>
 'gpu' 네임스페이스에 스케줄러와 관련한 모듈이 설치된다.
 ```
-kubectl create namespace gpu
+# kubectl create namespace gpu
 ```
 ---
 ## 3.설치순서
