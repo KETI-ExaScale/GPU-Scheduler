@@ -57,5 +57,13 @@ spec:
         - name: gpu-scheduler-configmap
           configMap:
             name: gpu-scheduler-configmap
-
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-scheduler-configmap
+  namespace: gpu
+data:
+  node-gpu-score-weight : "0.3 0.7"
+  pod-re-schedule-permit : "true"
             

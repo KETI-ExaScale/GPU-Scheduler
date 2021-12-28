@@ -1,1 +1,0 @@
-kubectl apply -f deployments/gpu-scheduler-configmap.yaml

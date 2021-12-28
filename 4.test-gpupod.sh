@@ -1,2 +1,1 @@
-kubectl delete -f deployments/testgpupod.yaml
-kubectl create -f deployments/testgpupod.yaml
+kubectl apply -f deployments/testgpupod.yaml

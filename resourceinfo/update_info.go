@@ -123,7 +123,7 @@ func getMetricCollectorIP(pods *corev1.PodList, nodeName string) ([]*corev1.Pod,
 			}
 		}
 	}
-
+	fmt.Println("##", MCIP)
 	return podsInNode, MCIP
 }
 

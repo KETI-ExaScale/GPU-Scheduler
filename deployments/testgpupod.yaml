@@ -7,7 +7,6 @@ spec:
   template:
     spec:
       hostIPC: true
-      #nodeName: gpuserver1
       schedulerName: gpu-scheduler
       containers:
         - image: seedjeffwan/nbody:cuda-10.1
