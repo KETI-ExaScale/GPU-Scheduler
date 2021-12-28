@@ -109,6 +109,10 @@ gpu           keti-gpu-scheduler-74c68ff868-6jmqr   1/1     Running     1 (42m a
           hostPath:
             path: /tmp/nvidia-mps
 ```
++ IPC Namespace Sharing Settings for Host Containers
+```
+hostIPC: true
+```
 #### GPU Pod Yaml Example
 ```
 apiVersion: batch/v1

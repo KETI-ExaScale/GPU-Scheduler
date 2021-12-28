@@ -110,6 +110,10 @@ GPU 응용 애플리케이션의 배포
           hostPath:
             path: /tmp/nvidia-mps
 ```
++ 호스트 컨테이너의 IPC 네임스페이스 공유 설정
+```
+hostIPC: true
+```
 #### GPU-Scheduler를 통해 스케줄링되는 Pod yaml 예시
 ```
 apiVersion: batch/v1
