@@ -3,7 +3,6 @@
 - [1.GPU-Scheduler 소개](#introduction-of-GPU-Scheduler)
 - [2.구성환경](#environment)
 - [3.설치순서](#install-step)
-- [4.모듈구성](#module-architecture)
 ----
 ## 1.GPU-Scheduler 소개 
 쿠버네티스 기반 GPU 애플리케이션 컨테이너의 스케줄링을 돕는 GPU 자원 배치 스케줄러<br>
