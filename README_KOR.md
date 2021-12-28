@@ -72,10 +72,10 @@ gpu               gpu-scheduler-configmap              2      19h
 GPU Scheduler 정상 작동을 위해 다음 3개의 모듈이 동작하고 있어야 함.  
 *[GPU-Metric-Collector](https://github.com/KETI-ExaScale/GPU-Metric-Collector), [GPU-Device-Plugin](https://github.com/KETI-ExaScale/GPU-Device-Plugin), [InfluxDB](https://github.com/KETI-ExaScale/InfluxDB)*
 ```
-[configmap yaml 배포]
+[gpu-scheduler yaml 배포]
 # kubectl apply -f deployments/gpu-scheduler-configmap.yaml
 or
-[configmap 쉘스크립트 실행]
+[spu-scheduler 쉘스크립트 실행]
 # ./2.polocy-config-gpu-scheduler.sh
 ```
 최종적으로 다음과 같은 모듈 4개가 Running 상태일 때 정상 스케줄링 가능
