@@ -158,3 +158,13 @@ or
 [run pod create script]
 # ./4.test-gpupod.sh
 ```
+#### Pod creation result
+```
+[root@master ~]# kubectl get po -A
+NAMESPACE     NAME                                  READY   STATUS      RESTARTS      AGE
+gpu           influxdb-0                            1/1     Running     1 (19h ago)   19h
+gpu           keti-gpu-device-plugin-h59db          2/2     Running     0             3m41s
+gpu           keti-gpu-metric-collector-5q5hz       1/1     Running     0             22m
+gpu           keti-gpu-scheduler-74c68ff868-6jmqr   1/1     Running     1 (42m ago)   18h
+userpod       testpod                               0/1     Completed   0             18m
+```
