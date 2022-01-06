@@ -116,9 +116,9 @@ func WatchPolicy() <-chan bool {
 	changed := make(chan bool)
 	go func() {
 		for {
-			if config.ReSchedule != config.Temp {
+			if config.ReSchedule != config.BeforeReSchedule {
 				changed <- config.ReSchedule
-				config.Temp = config.ReSchedule
+				config.BeforeReSchedule = config.ReSchedule
 			}
 		}
 	}()

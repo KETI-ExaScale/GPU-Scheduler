@@ -123,7 +123,6 @@ func getMetricCollectorIP(pods *corev1.PodList, nodeName string) ([]*corev1.Pod,
 			}
 		}
 	}
-	fmt.Println("##", MCIP)
 	return podsInNode, MCIP
 }
 
@@ -217,8 +216,6 @@ func GetNewPodInfo(newPod *corev1.Pod) {
 	}
 
 	fmt.Println("[temp]pod info : ", NewPod.RequestedResource, NewPod.GPUMemoryLimit, NewPod.GPUMemoryRequest)
-
-	return
 }
 
 func getMemory(memory string) int64 {

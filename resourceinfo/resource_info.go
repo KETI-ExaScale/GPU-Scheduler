@@ -5,24 +5,23 @@ import (
 )
 
 // check node count during filtering stage (golbal var)
-//var AvailableNodeCount = new(int)
-var NodeCount *_NodeCount
+var NodeCount *nodeCount
 
-type _NodeCount struct {
+type nodeCount struct {
 	NodeAvailable int
 }
 
-func InitNodeCount() *_NodeCount {
-	return &_NodeCount{
+func InitNodeCount() *nodeCount {
+	return &nodeCount{
 		NodeAvailable: 0,
 	}
 }
 
-func (nc *_NodeCount) CountUpNodeAvailableCount() {
+func (nc *nodeCount) CountUpNodeAvailableCount() {
 	nc.NodeAvailable++
 }
 
-func (nc *_NodeCount) CountDownNodeAvailableCount() {
+func (nc *nodeCount) CountDownNodeAvailableCount() {
 	nc.NodeAvailable--
 }
 

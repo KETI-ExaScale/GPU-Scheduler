@@ -62,5 +62,4 @@ func PostEvent(event *corev1.Event) {
 	if err != nil {
 		fmt.Println("post event failed")
 	}
-	return
 }

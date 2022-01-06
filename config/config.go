@@ -22,11 +22,11 @@ const (
 
 // gpu-scheduler policy
 var (
-	NodeWeight float64
-	GPUWeight  float64
-	ReSchedule bool
-	Temp       bool
-	LeastPod   = true
+	NodeWeight       float64
+	GPUWeight        float64
+	ReSchedule       bool
+	BeforeReSchedule bool
+	LeastPod         = true
 )
 
 // max gpu memory in cluster for scoring
