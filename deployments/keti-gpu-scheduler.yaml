@@ -39,7 +39,7 @@ spec:
       serviceAccountName: scheduler
       containers:
         - name: gpu-scheduler
-          image: ketidevit/gpu-scheduler:v0.1
+          image: ketidevit2/gpu-scheduler:v0.115
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
@@ -66,4 +66,7 @@ metadata:
 data:
   node-gpu-score-weight : "0.3 0.7"
   pod-re-schedule-permit : "true"
+  node-reservation-permit : "false"
+  nvlink-weight-percentage : "10"
+  gpu-allocate-prefer : "spread"
             

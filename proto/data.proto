@@ -32,6 +32,10 @@ message GPUMessage {
     int64 gpu_temp = 7;
     int64 gpu_power = 8;
     int64 mps_count = 9;
+    int64 gpu_flops = 10; 
+    int64 gpu_arch = 11;
+    int64 gpu_tpower = 12;
+    int64 gpu_util = 13;
 }
 message GetGPURequest{
     string gpu_uuid = 1;
