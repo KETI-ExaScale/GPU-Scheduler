@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-scheduler-clusterinfo
+  namespace: gpu
+data:
+  my-cluster-name : "gpu1"
+  cluster0 : "gpu1"
+  cluster1 : "kubernetes"

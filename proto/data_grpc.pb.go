@@ -20,6 +20,9 @@ const _ = grpc.SupportPackageIsVersion7
 type UserClient interface {
 	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
 	GetGPU(ctx context.Context, in *GetGPURequest, opts ...grpc.CallOption) (*GetGPUResponse, error)
+	GetWorkName(ctx context.Context, in *GetWorkNameRequest, opts ...grpc.CallOption) (*GetWorkNameResponse, error)
+	SendDegradation(ctx context.Context, in *DegradationMessage, opts ...grpc.CallOption) (*DegradationMessage, error)
+	GetInitData(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (*InitMessage, error)
 }
 
 type userClient struct {
@@ -48,12 +51,42 @@ func (c *userClient) GetGPU(ctx context.Context, in *GetGPURequest, opts ...grpc
 	return out, nil
 }
 
+func (c *userClient) GetWorkName(ctx context.Context, in *GetWorkNameRequest, opts ...grpc.CallOption) (*GetWorkNameResponse, error) {
+	out := new(GetWorkNameResponse)
+	err := c.cc.Invoke(ctx, "/v1.user.User/GetWorkName", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userClient) SendDegradation(ctx context.Context, in *DegradationMessage, opts ...grpc.CallOption) (*DegradationMessage, error) {
+	out := new(DegradationMessage)
+	err := c.cc.Invoke(ctx, "/v1.user.User/SendDegradation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userClient) GetInitData(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (*InitMessage, error) {
+	out := new(InitMessage)
+	err := c.cc.Invoke(ctx, "/v1.user.User/GetInitData", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServer is the server API for User service.
 // All implementations must embed UnimplementedUserServer
 // for forward compatibility
 type UserServer interface {
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
 	GetGPU(context.Context, *GetGPURequest) (*GetGPUResponse, error)
+	GetWorkName(context.Context, *GetWorkNameRequest) (*GetWorkNameResponse, error)
+	SendDegradation(context.Context, *DegradationMessage) (*DegradationMessage, error)
+	GetInitData(context.Context, *InitRequest) (*InitMessage, error)
 	mustEmbedUnimplementedUserServer()
 }
 
@@ -66,6 +99,15 @@ func (UnimplementedUserServer) GetNode(context.Context, *GetNodeRequest) (*GetNo
 }
 func (UnimplementedUserServer) GetGPU(context.Context, *GetGPURequest) (*GetGPUResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetGPU not implemented")
+}
+func (UnimplementedUserServer) GetWorkName(context.Context, *GetWorkNameRequest) (*GetWorkNameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkName not implemented")
+}
+func (UnimplementedUserServer) SendDegradation(context.Context, *DegradationMessage) (*DegradationMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendDegradation not implemented")
+}
+func (UnimplementedUserServer) GetInitData(context.Context, *InitRequest) (*InitMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInitData not implemented")
 }
 func (UnimplementedUserServer) mustEmbedUnimplementedUserServer() {}
 
@@ -116,6 +158,60 @@ func _User_GetGPU_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _User_GetWorkName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServer).GetWorkName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/v1.user.User/GetWorkName",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServer).GetWorkName(ctx, req.(*GetWorkNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _User_SendDegradation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DegradationMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServer).SendDegradation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/v1.user.User/SendDegradation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServer).SendDegradation(ctx, req.(*DegradationMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _User_GetInitData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServer).GetInitData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/v1.user.User/GetInitData",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServer).GetInitData(ctx, req.(*InitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // User_ServiceDesc is the grpc.ServiceDesc for User service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -130,6 +226,18 @@ var User_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetGPU",
 			Handler:    _User_GetGPU_Handler,
+		},
+		{
+			MethodName: "GetWorkName",
+			Handler:    _User_GetWorkName_Handler,
+		},
+		{
+			MethodName: "SendDegradation",
+			Handler:    _User_SendDegradation_Handler,
+		},
+		{
+			MethodName: "GetInitData",
+			Handler:    _User_GetInitData_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -6,3 +6,6 @@ metadata:
 data:
   node-gpu-score-weight : "0.3 0.7"
   pod-re-schedule-permit : "true"
+  node-reservation-permit : "false"
+  nvlink-weight-percentage : "10"
+  gpu-allocate-prefer : "spread"

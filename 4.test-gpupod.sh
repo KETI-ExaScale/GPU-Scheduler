@@ -1,1 +1,0 @@
-kubectl apply -f deployments/testgpupod.yaml

@@ -1,10 +1,17 @@
 syntax = "proto3";
+
 package v1.user;
+
 option go_package = "grpcserver/protos/v1/user";
+
 service User {
     rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
     rpc GetGPU(GetGPURequest) returns (GetGPUResponse);
+    rpc GetWorkName(GetWorkNameRequest) returns (GetWorkNameResponse);
+    rpc SendDegradation(DegradationMessage) returns (DegradationMessage);
+    rpc GetInitData(InitRequest) returns (InitMessage);
 }
+
 message NodeMessage {
     string node_name = 1;
     int64 node_totalcpu = 2;
@@ -16,12 +23,18 @@ message NodeMessage {
     int64 node_storage = 8;
     string gpu_uuid = 9;
     int64 max_gpu_memory = 10;
+    repeated string gpu1index = 11;
+    repeated string gpu2index = 12;
+    repeated int32 lanecount = 13;
 }
+
 message GetNodeRequest {
 }
+
 message GetNodeResponse {
     NodeMessage node_message = 1;
 }
+
 message GPUMessage {
     string gpu_uuid = 1;
     uint64 gpu_total = 2;
@@ -32,10 +45,37 @@ message GPUMessage {
     int64 gpu_temp = 7;
     int64 gpu_power = 8;
     int64 mps_count = 9;
+    int64 gpu_flops = 10;
+    int64 gpu_arch = 11;
+    int64 gpu_tpower = 12;
+    int64 gpu_util = 13;
 }
+
 message GetGPURequest{
     string gpu_uuid = 1;
 }
+
 message GetGPUResponse {
     GPUMessage gpu_message = 1;
+}
+
+message GetWorkNameRequest {
+    string ip = 1;
+    string nodename = 2;
+}
+
+message GetWorkNameResponse {
+    string workname = 1;
+}
+
+message DegradationMessage{
+    string DegradationData = 1;
+}
+
+message InitRequest {
+}
+
+message InitMessage{
+    NodeMessage InitNode = 1;
+    repeated GPUMessage InitGPU = 2;
 }

@@ -14,38 +14,67 @@
 package main
 
 import (
-	"gpu-scheduler/controller"
+	"context"
+	s "gpu-scheduler/scheduler"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func main() {
 	log.Println("-----Start GPU Scheduler-----")
 
-	//test()
+	//test() 에러파드 재스케줄링 테스트
 
-	doneChan := make(chan struct{}) //struct타입을 전송할 수 있는 통신용 채널 생성
+	quitChan := make(chan struct{}) //struct타입을 전송할 수 있는 통신용 채널 생성
 	var wg sync.WaitGroup           //모든 고루틴이 종료될 때 까지 대기할 때 사용
 
-	wg.Add(1)                                           //대기 중인 고루틴 개수 추가
-	go controller.MonitorUnscheduledPods(doneChan, &wg) //새로 들어온 파드 감시 루틴
+	hostConfig, _ := rest.InClusterConfig()
+	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
+
+	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
+
+	s.Scheduler = s.NewGPUScheduler(hostKubeClient) //스케줄러 생성
+
+	s.AddAllEventHandlers(s.Scheduler, informerFactory)
+	wg.Add(1)
+	go informerFactory.Core().V1().Pods().Informer().Run(quitChan)
+
+	//폴리시 이벤트 핸들러 추가
 
 	wg.Add(1)
-	go controller.ReconcileRescheduledPods(30, doneChan, &wg) //스케줄링 실패한 파드 30초 간격 재 스케줄링
+	ctx, cancel := context.WithCancel(context.Background())
+	s.Scheduler.Run(ctx) //schedule_one context
 
-	wg.Add(1)
-	go controller.WatchLowPerformancePod(doneChan, &wg) //성능 저하 파드 감시 루틴
+	// wg.Add(1)
+	// go s.Scheduler.RunScheduler(quitChan, &wg) //[A]Run Scheduling Routine
+
+	// wg.Add(1)
+	// go s.Scheduler.MonitorUnscheduledPods(quitChan, &wg) //[B]MonitorUnscheduledPods (start api server watching)
+
+	// wg.Add(1)
+	// go s.Scheduler.WatchLowPerformancePod(quitChan, &wg) //[D]Cache Thread
+
+	// wg.Add(1)
+	// go s.Scheduler.WatchSchedulerPolicy(quitChan, &wg) //[E] Watch Scheduler Policy
+
+	// // wg.Add(1)
+	// // go s.Scheduler.ReconcileRescheduledPods(30, quitChan, &wg) //[C]Queue Flush(BackOff,Reschedule)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM) //SIGINT를 지정하여 기다리는 루틴
 	for {
-		select { //select문은 case에 채널이 사용됨
+		select {
 		case <-signalChan:
 			log.Printf("Shutdown signal received, exiting...")
-			close(doneChan)
+			close(quitChan)
+			cancel()
 			wg.Wait() //모든 고루틴이 종료될 때까지 대기
 			os.Exit(0)
 		}
