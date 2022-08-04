@@ -27,6 +27,7 @@ type TaintToleration struct{}
 func (pl TaintToleration) Name() string {
 	return "TaintToleration"
 }
+<<<<<<< HEAD:framework/plugin/priorities/2.taint_toleration.go
 
 func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
 	fmt.Println("#2. ", pl.Name())
@@ -37,6 +38,18 @@ func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
+=======
+
+func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#2. ", pl.Name())
+	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeInfo.PluginResult.IsFiltered {
+	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
+	// 	}
+	// }
+}
+
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/taint_toleration.go
 func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
@@ -48,7 +61,11 @@ func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodI
 				nodeScore = 0
 			}
 
+<<<<<<< HEAD:framework/plugin/priorities/2.taint_toleration.go
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+=======
+			nodeinfo.PluginResult.NodeScore += math.Round(float64(nodeScore) * float64(1/r.Ns))
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/taint_toleration.go
 		}
 	}
 }

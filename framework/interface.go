@@ -156,7 +156,11 @@ type ScorePlugin interface {
 func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
 	fmt.Println("[STEP 1] Run Filtering Plugins")
 	for _, fp := range sf.Filtering {
+<<<<<<< HEAD
 		fp.Debugg()
+=======
+		// fp.Debugg()
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		fp.Filter(nodeInfoCache, newPod)
 		if nodeInfoCache.AvailableNodeCount == 0 {
 			return errors.New("there isn't any node to schedule")
@@ -169,7 +173,11 @@ func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, ne
 	fmt.Println("[STEP 2] Run Scoring Plugins")
 	for _, sp := range sf.Scoring {
 		sp.Score(nodeInfoCache, newPod)
+<<<<<<< HEAD
 		sp.Debugg(nodeInfoCache)
+=======
+		// sp.Debugg(nodeInfoCache)
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	}
 	return nil
 }

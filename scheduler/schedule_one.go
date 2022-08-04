@@ -21,10 +21,16 @@ import (
 	"os"
 	"sort"
 	"strings"
+<<<<<<< HEAD
 	"time"
 
 	// batchv1 "k8s.io/api/batch/v1"
 
+=======
+
+	// batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -41,6 +47,7 @@ func (sched *GPUScheduler) UpdateCache() error {
 	fmt.Println("[STEP 1] Update Scheduler Resource Info")
 	fmt.Println("# Sending gRPC request...")
 
+<<<<<<< HEAD
 	sched.ScheduleResult.InitResult()
 	sched.NodeInfoCache.AvailableNodeCount = 0
 
@@ -61,6 +68,14 @@ func (sched *GPUScheduler) UpdateCache() error {
 			nodeInfo.PluginResult.IsFiltered = true
 			continue
 		}
+=======
+	sched.NodeInfoCache.AvailableNodeCount = 0
+
+	for _, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
+		nodeInfo.PluginResult.InitPluginResult()
+		nodeInfo.NodeMetric.GetNodeMetric(nodeInfo.GRPCHost)
+		// sched.NodeInfoCache.GPUMemoryMostInCluster = r.Max(sched.NodeInfoCache.GPUMemoryMostInCluster, nodeInfo.NodeMetric.MaxGPUMemory)
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 		for _, uuid := range nodeInfo.NodeMetric.GPU_UUID {
 			err := nodeInfo.GPUMetrics[uuid].GetGPUMetric(uuid, nodeInfo.GRPCHost)
@@ -107,6 +122,7 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	}
 	fmt.Println("- schedule pod { ", sched.NewPod.Pod.Name, " }")
 
+<<<<<<< HEAD
 	// flag := sched.checkScheduleType()
 
 	// if flag == 1 {
@@ -119,6 +135,20 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	// 	fmt.Println("- need node scheduling")
 	sched.nodeScheduleOne(ctx)
 	// }
+=======
+	flag := sched.checkScheduleType()
+
+	if flag == 1 {
+		fmt.Println("- need cluster scheduling")
+		sched.clusterScheduleOne(ctx)
+	} else if flag == 2 {
+		fmt.Println("- need cluster binding")
+		go sched.createPodToAnotherCluster(*sched.NewPod)
+	} else {
+		fmt.Println("- need node scheduling")
+		sched.nodeScheduleOne(ctx)
+	}
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func patchPodAnnotationClusterNameMarshal(clusterName string) ([]byte, error) {
@@ -249,16 +279,28 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 }
 
 func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
+<<<<<<< HEAD
+=======
+
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	fmt.Println("node scheduling { ", sched.NewPod.Pod.Name, " }")
 
 	pod := sched.NewPod.Pod
 
+<<<<<<< HEAD
 	startTime := time.Now()
 
+=======
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	sched.frameworkForPod()
 
 	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod))
 
+<<<<<<< HEAD
+=======
+	// start := time.Now()
+
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	//[STEP 1] Update Scheduler
 	err := sched.UpdateCache() //metric update, score init
 	if err != nil {
@@ -280,11 +322,20 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	//[STEP 4]get Best Node/GPU
 	sched.GetBestNodeAndGPU()
 
+<<<<<<< HEAD
 	sched.NodeInfoCache.UpdatePodState(pod, r.Assumed)
 
 	elapsedTime := time.Since(startTime)
 
 	fmt.Println("#Scheduling Time : ", elapsedTime.Seconds())
+=======
+	assumedPodInfo := sched.NewPod.DeepCopy()
+	assumedPod := assumedPodInfo.Pod
+	err = sched.assume(assumedPod, sched.ScheduleResult.BestNode)
+	if err != nil {
+		fmt.Print(err)
+	}
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	//[STEP 5] Binding Stage
 	go sched.Binding(ctx, *sched.NewPod, *sched.ScheduleResult)
@@ -312,6 +363,7 @@ func (sched *GPUScheduler) schedulePod() error {
 	return nil
 }
 
+<<<<<<< HEAD
 // func (sched *GPUScheduler) assume(assumed *corev1.Pod, host string) error {
 // 	// Optimistically assume that the binding will succeed and send it to apiserver
 // 	// in the background.
@@ -330,6 +382,26 @@ func (sched *GPUScheduler) schedulePod() error {
 
 // 	return nil
 // }
+=======
+func (sched *GPUScheduler) assume(assumed *corev1.Pod, host string) error {
+	// Optimistically assume that the binding will succeed and send it to apiserver
+	// in the background.
+	// If the binding fails, scheduler will release resources allocated to assumed pod
+	// immediately.
+	assumed.Spec.NodeName = host
+
+	if err := sched.NodeInfoCache.AssumePod(assumed); err != nil {
+		klog.ErrorS(err, "Scheduler cache AssumePod failed")
+		return err
+	}
+	// // if "assumed" is a nominated pod, we should remove it from internal cache
+	// if sched.SchedulingQueue != nil {
+	// 	sched.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
+	// }
+
+	return nil
+}
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 func (sched *GPUScheduler) frameworkForPod() {
 	if sched.NewPod.IsGPUPod {
@@ -343,7 +415,11 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 	fmt.Println("[STEP 4] Get Best Node/GPU")
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
+<<<<<<< HEAD
 			sched.getTotalScore(nodeInfo, sched.NewPod.RequestedResource.GPUCount)
+=======
+			sched.getTotalScore(nodeInfo.PluginResult, sched.NewPod.RequestedResource.GPUCount)
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 			if sched.ScheduleResult.TotalScore < nodeInfo.PluginResult.TotalScore {
 				sched.ScheduleResult.BestNode = nodeName
 				sched.ScheduleResult.BestGPU = nodeInfo.PluginResult.BestGPU
@@ -356,12 +432,17 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 	fmt.Println("#Result: BestGPU {", sched.ScheduleResult.BestGPU, "}")
 }
 
+<<<<<<< HEAD
 func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int) {
 	score := nodeinfo.PluginResult
+=======
+func (sched *GPUScheduler) getTotalScore(score *r.PluginResult, requestedGPU int) {
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	if !sched.NewPod.IsGPUPod {
 		score.TotalScore = score.NodeScore
 		return
 	}
+<<<<<<< HEAD
 	sched.getTotalGPUScore(nodeinfo, requestedGPU)
 	score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
 		float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
@@ -475,6 +556,38 @@ func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
 		nvl.Score = int(math.Round(score * float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100)))
 	}
+=======
+	getTotalGPUScore(score, requestedGPU)
+	score.TotalScore = math.Round(score.NodeScore*sched.SchedulingPolicy.NodeWeight + score.TotalGPUScore*sched.SchedulingPolicy.GPUWeight)
+}
+
+func getTotalGPUScore(score *r.PluginResult, requestedGPU int) {
+	totalGPUScore, bestGPU := float64(0), ""
+
+	type gs []*r.GPUScore
+	scoreSlice := make(gs, 0, len(score.GPUScores))
+	for _, d := range score.GPUScores {
+		scoreSlice = append(scoreSlice, d)
+	}
+	sort.SliceStable(scoreSlice, func(i, j int) bool {
+		return scoreSlice[i].GPUScore > scoreSlice[j].GPUScore
+	})
+
+	fmt.Println("#20. Check NVLink GPU")
+
+	for _, a := range scoreSlice {
+		fmt.Println("|", a.UUID, " | ", a.GPUScore, " | ", a.IsFiltered, "|")
+	}
+
+	bestGPUScore := scoreSlice[:requestedGPU] //스코어 점수 상위 N개의 GPU
+
+	for _, gpu := range bestGPUScore {
+		totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+		bestGPU += gpu.UUID + ","
+	}
+	score.TotalGPUScore = math.Round(totalGPUScore)
+	score.BestGPU = strings.Trim(bestGPU, ",")
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 // func (sched *GPUScheduler) PostEvent(event *corev1.Event) {

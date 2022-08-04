@@ -28,11 +28,19 @@ func (pl SelectorSpread) Name() string {
 
 func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
 	fmt.Println("#3. ", pl.Name())
+<<<<<<< HEAD:framework/plugin/priorities/3.selector_spread.go
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
 		}
 	}
+=======
+	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeInfo.PluginResult.IsFiltered {
+	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
+	// 	}
+	// }
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/selector_spread.go
 }
 
 func (pl SelectorSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -40,7 +48,11 @@ func (pl SelectorSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 		nodeScore := 100
 		if !nodeinfo.PluginResult.IsFiltered {
 			// selector := getSelector(newPod.Pod)
+<<<<<<< HEAD:framework/plugin/priorities/3.selector_spread.go
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+=======
+			nodeinfo.PluginResult.NodeScore += math.Round(float64(nodeScore) * float64(1/r.Ns))
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/selector_spread.go
 		}
 	}
 }

@@ -28,17 +28,29 @@ func (pl PodTopologySpread) Name() string {
 
 func (pl PodTopologySpread) Debugg(nodeInfoCache *r.NodeCache) {
 	fmt.Println("#5. ", pl.Name())
+<<<<<<< HEAD
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
 		}
 	}
+=======
+	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeInfo.PluginResult.IsFiltered {
+	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
+	// 	}
+	// }
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func (pl PodTopologySpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
+<<<<<<< HEAD
 			nodeScore, weight := int(0), int(0)
+=======
+			nodeScore, weight := float64(0), int64(0)
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 			// var topologyScore topologyPairToScore
 			// if priorityMeta, ok := meta.(*priorityMetadata); ok {
 			// 	topologyScore = priorityMeta.topologyScore
@@ -49,8 +61,13 @@ func (pl PodTopologySpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 			// 		weight += tpValues[v]
 			// 	}
 			// }
+<<<<<<< HEAD
 			nodeScore = weight
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+=======
+			nodeScore = float64(weight)
+			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * (1 / r.Ns))
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		}
 	}
 

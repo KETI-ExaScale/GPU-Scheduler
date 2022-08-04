@@ -2,7 +2,6 @@ package resourceinfo
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -19,7 +18,10 @@ func (nm *NodeMetric) GetNodeMetric(ip string) error {
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	defer conn.Close()
 	if err != nil {
+<<<<<<< HEAD
 		fmt.Println("<error> get node metric1 - ", err)
+=======
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		return err
 	}
 	grpcClient := pb.NewUserClient(conn)
@@ -27,12 +29,16 @@ func (nm *NodeMetric) GetNodeMetric(ip string) error {
 	r, err := grpcClient.GetNode(ctx, &pb.GetNodeRequest{})
 	if err != nil {
 		cancel()
+<<<<<<< HEAD
 		fmt.Println("<error> get node metric2 - ", err)
+=======
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		return err
 	}
 	result := r.GetNodeMessage()
 	cancel()
 
+<<<<<<< HEAD
 	// nm.TotalGPUCount = result.GpuCount
 	// nm.MilliCPUTotal = result.NodeTotalcpu
 	nm.MilliCPUUsed = result.NodeCpu
@@ -51,6 +57,17 @@ func (nm *NodeMetric) GetNodeMetric(ip string) error {
 	// 	nvl := NewNVLink(value, Gpu2UuidArr2[i], LinkcountArr3[i])
 	// 	nm.NVLinkList = append(nm.NVLinkList, nvl)
 	// }
+=======
+	nm.TotalGPUCount = result.GpuCount
+	nm.MilliCPUTotal = result.NodeTotalcpu
+	nm.MilliCPUUsed = result.NodeCpu
+	nm.MemoryTotal = result.NodeTotalmemory
+	nm.MemoryUsed = result.NodeMemory
+	nm.StorageTotal = result.NodeTotalstorage
+	nm.StorageUsed = result.NodeStorage
+	nm.GPU_UUID = stringToArray(result.GpuUuid)
+	nm.MaxGPUMemory = result.MaxGpuMemory
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	// 	fmt.Println(" |NodeMetric|", nm)
 
@@ -67,7 +84,10 @@ func (gm *GPUMetric) GetGPUMetric(uuid string, ip string) error {
 	host := ip + ":9000"
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
+<<<<<<< HEAD
 		fmt.Println("<error> get gpu metric1 - ", err)
+=======
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		return err
 	}
 	defer conn.Close()
@@ -77,6 +97,7 @@ func (gm *GPUMetric) GetGPUMetric(uuid string, ip string) error {
 	p, err := grpcClient.GetGPU(ctx, &pb.GetGPURequest{GpuUuid: uuid})
 	if err != nil {
 		cancel()
+<<<<<<< HEAD
 		fmt.Println("<error> get gpu metric2 - ", err)
 		return err
 	}
@@ -164,7 +185,28 @@ func (ni *NodeInfo) GetInitMetric(ip string) error {
 		ni.GPUMetrics[uuid] = gm
 		ni.PluginResult.GPUScores[uuid] = NewGPUScore(uuid)
 		ni.PluginResult.GPUCountUp()
+=======
+		return err
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	}
+	result := p.GetGpuMessage()
+	cancel()
 
+<<<<<<< HEAD
+=======
+	gm.GPUName = result.GpuName
+	gm.GPUIndex = result.GpuIndex
+	gm.GPUPowerUsed = result.GpuPower
+	gm.GPUPowerTotal = result.GpuTpower
+	gm.GPUMemoryTotal = int64(result.GpuTotal)
+	gm.GPUMemoryFree = int64(result.GpuFree)
+	gm.GPUMemoryUsed = int64(result.GpuUsed)
+	gm.GPUTemperature = result.GpuTemp
+	gm.PodCount = result.MpsCount
+	gm.GPUFlops = result.GpuFlops
+	gm.GPUArch = result.GpuArch
+	gm.GPUUtil = result.GpuUtil
+
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	return nil
 }

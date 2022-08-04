@@ -31,7 +31,11 @@ func (pl GPUUtilization) Debugg(nodeInfoCache *r.NodeCache) {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
+<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+=======
+					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -45,7 +49,11 @@ func (pl GPUUtilization) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
 					gpuScore := float64((200 - gpu.GPUUtil) / 200)
 					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+<<<<<<< HEAD
 					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+=======
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = gpuScore
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}

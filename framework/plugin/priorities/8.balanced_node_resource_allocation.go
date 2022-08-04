@@ -25,6 +25,7 @@ type BalancedNodeResourceAllocation struct{}
 func (pl BalancedNodeResourceAllocation) Name() string {
 	return "BalancedNodeResourceAllocation"
 }
+<<<<<<< HEAD:framework/plugin/priorities/8.balanced_node_resource_allocation.go
 
 func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
 	fmt.Println("#8. ", pl.Name())
@@ -35,6 +36,18 @@ func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
+=======
+
+func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#8. ", pl.Name())
+	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeInfo.PluginResult.IsFiltered {
+	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
+	// 	}
+	// }
+}
+
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/balanced_resource_allocation.go
 func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
@@ -53,7 +66,11 @@ func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPo
 				nodeScore = (1 - variance) * 100
 			}
 
+<<<<<<< HEAD:framework/plugin/priorities/8.balanced_node_resource_allocation.go
 			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
+=======
+			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * (1 / r.Ns))
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/balanced_resource_allocation.go
 
 		}
 	}

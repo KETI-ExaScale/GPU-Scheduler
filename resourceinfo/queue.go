@@ -253,7 +253,12 @@ func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
 			pInfo := updatePod(oldPodInfo, newPod)
 			pInfo.Activate()
 			q.activeQ.PushBack(pInfo)
+<<<<<<< HEAD
 		} else if exists, oldPodInfo := q.activeQLookup(oldPod.UID); exists {
+=======
+		}
+		if exists, oldPodInfo := q.activeQLookup(oldPod.UID); exists {
+>>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 			pInfo := updatePod(oldPodInfo, newPod)
 			q.activeQ.PushBack(pInfo)
 		}
