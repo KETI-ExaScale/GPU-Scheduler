@@ -26,16 +26,12 @@ func (pl GPUMemoryUsage) Name() string {
 }
 
 func (pl GPUMemoryUsage) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#14. ", pl.Name())
+	fmt.Println("#14.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
-=======
-					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -51,29 +47,10 @@ func (pl GPUMemoryUsage) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 		if !nodeinfo.PluginResult.IsFiltered {
 			for j, gpu := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-<<<<<<< HEAD
 					gpuScore := float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal)
 					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
 					// gpuScore = float64(gpu.GPUMemoryFree) / float64(nodeInfoCache.GPUMemoryMostInCluster)
 					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
-=======
-					gpuScore := float64(gpu.GPUMemoryFree) / float64(nodeInfoCache.GPUMemoryMostInCluster)
-					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = gpuScore
-				}
-			}
-		}
-	}
-
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, gpu := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore1 := float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal)
-					gpuScore2 := float64(gpu.GPUMemoryFree)/float64(nodeInfoCache.GPUMemoryMostInCluster) + 1
-					gpuScore := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore1 * gpuScore2
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = gpuScore
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}

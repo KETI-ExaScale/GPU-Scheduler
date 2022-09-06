@@ -26,16 +26,12 @@ func (pl GPUPower) Name() string {
 }
 
 func (pl GPUPower) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#17. ", pl.Name())
+	fmt.Println("#17.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
-=======
-					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -50,11 +46,7 @@ func (pl GPUPower) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 					gpuScore := float64((gpu.GPUPowerTotal - gpu.GPUPowerUsed) / gpu.GPUPowerTotal)
 					if gpuScore < 10000 {
 						temp := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * 0.9
-<<<<<<< HEAD
 						nodeinfo.PluginResult.GPUScores[j].GPUScore = int(temp)
-=======
-						nodeinfo.PluginResult.GPUScores[j].GPUScore = temp
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 					}
 				}
 			}

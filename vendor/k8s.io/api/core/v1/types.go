@@ -3393,6 +3393,7 @@ type TopologySpreadConstraint struct {
 	// in their corresponding topology domain.
 	// +optional
 	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty" protobuf:"bytes,4,opt,name=labelSelector"`
+	MinDomains    *int32                `json:"minDomains,omitempty" protobuf:"varint,5,opt,name=minDomains"`
 }
 
 const (

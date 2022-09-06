@@ -3,10 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"reflect"
-<<<<<<< HEAD
 	"strings"
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
@@ -76,15 +73,6 @@ func AddAllEventHandlers(
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
-<<<<<<< HEAD
-=======
-					// if !assignedPod(t) && responsibleForPod(t) {
-					// 	if ok, _ := sched.NodeInfoCache.CheckPodStateExist(t); !ok {
-					// 		return true
-					// 	}
-					// }
-					// return false
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 					return !assignedPod(t) && responsibleForPod(t)
 				case cache.DeletedFinalStateUnknown:
 					return false
@@ -103,7 +91,6 @@ func AddAllEventHandlers(
 
 	// node
 	informerFactory.Core().V1().Nodes().Informer().AddEventHandler(
-<<<<<<< HEAD
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -121,12 +108,6 @@ func AddAllEventHandlers(
 				UpdateFunc: sched.updateNodeInCache,
 				DeleteFunc: sched.deleteNodeFromCache,
 			},
-=======
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sched.addNodeToCache,
-			UpdateFunc: sched.updateNodeInCache,
-			DeleteFunc: sched.deleteNodeFromCache,
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		},
 	)
 }
@@ -210,11 +191,8 @@ func (sched *GPUScheduler) addPodToSchedulingQueue(obj interface{}) {
 	if err := sched.SchedulingQueue.Add_AvtiveQ(pod); err != nil {
 		//podstates에 추가?
 		fmt.Errorf("unable to queue %T: %v", obj, err)
-<<<<<<< HEAD
 	} else {
 		sched.NodeInfoCache.AddPodState(*pod, r.Pending)
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	}
 }
 
@@ -222,7 +200,6 @@ func (sched *GPUScheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}
 
 	oldPod, newPod := oldObj.(*v1.Pod), newObj.(*v1.Pod)
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
-<<<<<<< HEAD
 		return
 	}
 
@@ -231,12 +208,6 @@ func (sched *GPUScheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}
 			return
 		}
 	}
-=======
-		// fmt.Println("same")
-		return
-	}
-	// fmt.Println("updatePodInSchedulingQueue: ", oldPod.Name)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	if err := sched.SchedulingQueue.Update(oldPod, newPod); err != nil {
 		fmt.Errorf("unable to update %T: %v", newObj, err)
@@ -244,10 +215,6 @@ func (sched *GPUScheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}
 }
 
 func (sched *GPUScheduler) deletePodFromSchedulingQueue(obj interface{}) {
-<<<<<<< HEAD
-=======
-
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	var pod *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:
@@ -265,42 +232,20 @@ func (sched *GPUScheduler) deletePodFromSchedulingQueue(obj interface{}) {
 		return
 	}
 
-<<<<<<< HEAD
 	if ok, state := sched.NodeInfoCache.CheckPodStateExist(pod); ok {
 		if state != r.Pending {
 			return
 		}
 	}
 
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	klog.V(3).InfoS("Delete event for unscheduled pod", "pod", klog.KObj(pod))
 	if err := sched.SchedulingQueue.Delete(pod); err != nil {
 		fmt.Errorf("unable to dequeue %T: %v", obj, err)
 	}
-<<<<<<< HEAD
-=======
-
-	// fwk, err := sched.frameworkForPod(pod)
-	// if err != nil {
-	// 	// This shouldn't happen, because we only accept for scheduling the pods
-	// 	// which specify a scheduler name that matches one of the profiles.
-	// 	klog.ErrorS(err, "Unable to get profile", "pod", klog.KObj(pod))
-	// 	return
-	// }
-
-	// // If a waiting pod is rejected, it indicates it's previously assumed and we're
-	// // removing it from the scheduler cache. In this case, signal a AssignedPodDelete
-	// // event to immediately retry some unscheduled Pods.
-	// if fwk.RejectWaitingPod(pod.UID) {
-	// 	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(r.AssignedPodDelete, nil)
-	// }
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 	pod, _ := obj.(*v1.Pod)
-<<<<<<< HEAD
 
 	if ok, state := sched.NodeInfoCache.CheckPodStateExist(pod); ok {
 		if state == r.BindingFinished {
@@ -324,44 +269,14 @@ func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 		if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
 			fmt.Println("add node {", pod.Spec.NodeName, "} gpu metric collector")
 			sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].GRPCHost = pod.Status.PodIP
+		} else if strings.HasPrefix(pod.Name, "keti-cluster-manager") {
+			fmt.Println("cluster manager added! {", pod.Name, "}")
+			if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
+				sched.ClusterManagerHost = pod.Status.PodIP
+				sched.InitClusterManager()
+			}
 		}
 	}
-=======
-	// fmt.Println("====Informer addPodToCache {", pod.Name, "} ====")
-
-	if ok, state := sched.NodeInfoCache.CheckPodStateExist(pod); ok {
-		if state == r.BindingFinished {
-			// fmt.Println("*Pod {", pod.Name, "} Exist, State : ", state)
-			return
-		} else {
-			sched.NodeInfoCache.AddPod(pod)
-			sched.NodeInfoCache.ChangePodState(pod, r.BindingFinished)
-		}
-
-	} else {
-		fmt.Println("**Pod {", pod.Name, "} NonExist")
-		sched.NodeInfoCache.AddPod(pod)
-		// sched.NodeInfoCache.AddPodState(*pod, r.BindingFinished)
-	}
-
-	// if !ok {
-	// 	klog.ErrorS(nil, "Cannot convert to *v1.Pod", "obj", obj)
-	// 	return
-	// }
-	// klog.V(3).InfoS("Add event for scheduled pod", "pod", klog.KObj(pod))
-
-	// if _, ok = sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].Pods[pod.Name]; ok {
-	// 	// fmt.Println("here 6-", pod.Name)
-	// 	return
-	// }
-
-	// if err := sched.NodeInfoCache.AddPod(pod); err != nil {
-	// 	// fmt.Println("here 7-", pod.Name)
-	// 	klog.ErrorS(err, "Scheduler cache AddPod failed", "pod", klog.KObj(pod))
-	// }
-
-	// sched.SchedulingQueue.AssignedPodAdded(pod)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
@@ -378,18 +293,11 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 	}
 	klog.V(4).InfoS("Update event for scheduled pod", "pod", klog.KObj(oldPod))
 
-<<<<<<< HEAD
 	// ok, state := sched.NodeInfoCache.CheckPodStateExist(oldPod)
 	// if !ok || state != r.BindingFinished {
 	// 	fmt.Println("cannot update. there isn't pod {", newPod.Name, "} state")
 	// 	return
 	// }
-=======
-	if ok, _ = sched.NodeInfoCache.CheckPodStateExist(oldPod); !ok {
-		fmt.Println("cannot update. there isn't pod {", newPod.Name, "} state")
-		return
-	}
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	if err := sched.NodeInfoCache.UpdatePod(oldPod, newPod); err != nil {
 		klog.ErrorS(err, "Scheduler cache UpdatePod failed", "pod", klog.KObj(oldPod))
@@ -413,24 +321,17 @@ func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
 		klog.ErrorS(nil, "Cannot convert to *v1.Pod", "obj", t)
 		return
 	}
-<<<<<<< HEAD
-=======
-	// fmt.Println("deletePodFromCache: ", pod.Name)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	if ok, _ := sched.NodeInfoCache.CheckPodStateExist(pod); !ok {
 		fmt.Println("cannot delete. there isn't pod {", pod.Name, "} state")
 		return
 	}
 
-<<<<<<< HEAD
 	if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
 		fmt.Println("remove node {", pod.Spec.NodeName, "} gpu metric collector")
 		sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].GRPCHost = ""
 	}
 
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	klog.V(3).InfoS("Delete event for scheduled pod", "pod", klog.KObj(pod))
 	if err := sched.NodeInfoCache.RemovePod(pod); err != nil {
 		klog.ErrorS(err, "Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
@@ -447,7 +348,6 @@ func assignedPod(pod *v1.Pod) bool {
 // responsibleForPod returns true if the pod has asked to be scheduled by the given scheduler.
 func responsibleForPod(pod *v1.Pod) bool {
 	responsibleForPod := (pod.Spec.SchedulerName == "gpu-scheduler")
-	fmt.Println("responsibleForPod- ", pod.Spec.SchedulerName)
 	return responsibleForPod
 }
 

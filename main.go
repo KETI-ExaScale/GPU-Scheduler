@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	s "gpu-scheduler/scheduler"
 	"log"
 	"os"
@@ -35,12 +36,23 @@ func main() {
 	quitChan := make(chan struct{}) //struct타입을 전송할 수 있는 통신용 채널 생성
 	var wg sync.WaitGroup           //모든 고루틴이 종료될 때 까지 대기할 때 사용
 
-	hostConfig, _ := rest.InClusterConfig()
+	hostConfig, err := rest.InClusterConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
 
 	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
 
-	s.Scheduler = s.NewGPUScheduler(hostKubeClient) //스케줄러 생성
+	s.Scheduler, err = s.NewGPUScheduler(hostKubeClient) //스케줄러 생성
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s.Scheduler.InitClusterManager()
+	if err != nil {
+		fmt.Println("<error> Init Cluster Manager error-", err)
+	}
 
 	s.AddAllEventHandlers(s.Scheduler, informerFactory)
 	wg.Add(1)

@@ -12,7 +12,7 @@ func (pl PodFitsNodeResources) Name() string {
 }
 
 func (pl PodFitsNodeResources) Debugg() {
-	fmt.Println("#6. ", pl.Name())
+	fmt.Println("#6.", pl.Name())
 }
 
 func (pl PodFitsNodeResources) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

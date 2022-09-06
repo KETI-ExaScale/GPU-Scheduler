@@ -59,14 +59,14 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/gpu-scheduler:v0.169
+          image: ketidevit2/gpu-scheduler:v0.215
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
             - name: gpu-scheduler-configmap
               mountPath: /gpu-scheduler-configmap
-            - name: gpu-scheduler-clusterinfo
-              mountPath: /gpu-scheduler-clusterinfo
+            - name: config
+              mountPath: /root/.kube/  
           resources:
             limits:
               memory: "200Mi"
@@ -79,9 +79,9 @@ spec:
         - name: gpu-scheduler-configmap
           configMap:
             name: gpu-scheduler-configmap
-        - name: gpu-scheduler-clusterinfo
-          configMap:
-            name: gpu-scheduler-clusterinfo
+        - name: config
+          hostPath:
+            path: /root/.kube
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -94,13 +94,3 @@ data:
   node-reservation-permit : "false"
   nvlink-weight-percentage : "10"
   gpu-allocate-prefer : "spread"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gpu-scheduler-clusterinfo
-  namespace: gpu
-data:
-  my-cluster-name : "gpu1"
-  cluster0 : "gpu1"
-  cluster1 : "kubernetes"

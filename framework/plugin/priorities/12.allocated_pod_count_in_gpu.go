@@ -27,16 +27,12 @@ func (pl AllocatedPodCountInGPU) Name() string {
 }
 
 func (pl AllocatedPodCountInGPU) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#12. ", pl.Name())
+	fmt.Println("#12.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
-=======
-					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -49,13 +45,8 @@ func (pl AllocatedPodCountInGPU) Score(nodeInfoCache *r.NodeCache, newPod *r.Que
 			for j, gpu := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
 					gpuScore := float64(1 * gpu.PodCount)
-<<<<<<< HEAD
 					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) - gpuScore
 					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(gpuScore, 0))
-=======
-					gpuScore = nodeinfo.PluginResult.GPUScores[j].GPUScore - gpuScore
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = math.Max(gpuScore, 0)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}

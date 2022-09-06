@@ -15,93 +15,105 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 
 	r "gpu-scheduler/resourceinfo"
+
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	appslisters "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
-type SelectorSpread struct{}
+type SelectorSpread struct {
+	services               corelisters.ServiceLister
+	replicationControllers corelisters.ReplicationControllerLister
+	replicaSets            appslisters.ReplicaSetLister
+	statefulSets           appslisters.StatefulSetLister
+}
+
+var (
+	rcKind = v1.SchemeGroupVersion.WithKind("ReplicationController")
+	rsKind = appsv1.SchemeGroupVersion.WithKind("ReplicaSet")
+	ssKind = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
+)
 
 func (pl SelectorSpread) Name() string {
 	return "SelectorSpread"
 }
 
 func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#3. ", pl.Name())
-<<<<<<< HEAD:framework/plugin/priorities/3.selector_spread.go
+	fmt.Println("#3.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
 		}
 	}
-=======
-	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeInfo.PluginResult.IsFiltered {
-	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
-	// 	}
-	// }
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/selector_spread.go
 }
 
 func (pl SelectorSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		nodeScore := 100
-		if !nodeinfo.PluginResult.IsFiltered {
-			// selector := getSelector(newPod.Pod)
-<<<<<<< HEAD:framework/plugin/priorities/3.selector_spread.go
-			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
-=======
-			nodeinfo.PluginResult.NodeScore += math.Round(float64(nodeScore) * float64(1/r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/selector_spread.go
-		}
-	}
+	// if skipSelectorSpread(newPod.Pod) {
+	// 	return
+	// }
+	// selector := DefaultSelector(
+	// 	newPod.Pod,
+	// 	pl.services,
+	// 	pl.replicationControllers,
+	// 	pl.replicaSets,
+	// 	pl.statefulSets,
+	// )
+	// state := &preScoreState3{
+	// 	selector: selector,
+	// }
+
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		count := countMatchingPods(newPod.Pod.Namespace, state.selector, nodeinfo)
+	//		fmt.Println("scoring>selector_spread: ", count, "scode, node: ", nodeinfo.Node().Name)
+	// 		nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count)))
+	// 	}
+	// }
 }
 
-// func skipSelectorSpread(pod *v1.Pod) bool {
-// 	return len(pod.Spec.TopologySpreadConstraints) != 0
-// }
+func skipSelectorSpread(pod *v1.Pod) bool {
+	return len(pod.Spec.TopologySpreadConstraints) != 0
+}
 
-// func getSelector(pod *v1.Pod, sl corelisters.ServiceLister, cl corelisters.ReplicationControllerLister, rsl appslisters.ReplicaSetLister, ssl appslisters.StatefulSetLister) labels.Selector {
-// 	labelSet := make(labels.Set)
-// 	// Since services, RCs, RSs and SSs match the pod, they won't have conflicting
-// 	// labels. Merging is safe.
+func GetPodServices(sl corelisters.ServiceLister, pod *v1.Pod) ([]*v1.Service, error) {
+	allServices, err := sl.Services(pod.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
 
-// 	if services, err := sl.GetPodServices(pod); err == nil {
-// 		for _, service := range services {
-// 			labelSet = labels.Merge(labelSet, service.Spec.Selector)
-// 		}
-// 	}
+	var services []*v1.Service
+	for i := range allServices {
+		service := allServices[i]
+		if service.Spec.Selector == nil {
+			// services with nil selectors match nothing, not everything.
+			continue
+		}
+		selector := labels.Set(service.Spec.Selector).AsSelectorPreValidated()
+		if selector.Matches(labels.Set(pod.Labels)) {
+			services = append(services, service)
+		}
+	}
 
-// 	if rcs, err := cl.GetPodControllers(pod); err == nil {
-// 		for _, rc := range rcs {
-// 			labelSet = labels.Merge(labelSet, rc.Spec.Selector)
-// 		}
-// 	}
+	return services, nil
+}
 
-// 	selector := labels.NewSelector()
-// 	if len(labelSet) != 0 {
-// 		selector = labelSet.AsSelector()
-// 	}
-
-// 	if rss, err := rsl.GetPodReplicaSets(pod); err == nil {
-// 		for _, rs := range rss {
-// 			if other, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector); err == nil {
-// 				if r, ok := other.Requirements(); ok {
-// 					selector = selector.Add(r...)
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	if sss, err := ssl.GetPodStatefulSets(pod); err == nil {
-// 		for _, ss := range sss {
-// 			if other, err := metav1.LabelSelectorAsSelector(ss.Spec.Selector); err == nil {
-// 				if r, ok := other.Requirements(); ok {
-// 					selector = selector.Add(r...)
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	return selector
-// }
+func countMatchingPods(namespace string, selector labels.Selector, nodeInfo *r.NodeInfo) int {
+	if len(nodeInfo.Pods) == 0 || selector.Empty() {
+		return 0
+	}
+	count := 0
+	for _, p := range nodeInfo.Pods {
+		// Ignore pods being deleted for spreading purposes
+		// Similar to how it is done for SelectorSpreadPriority
+		if namespace == p.Pod.Namespace && p.Pod.DeletionTimestamp == nil {
+			if selector.Matches(labels.Set(p.Pod.Labels)) {
+				count++
+			}
+		}
+	}
+	return count
+}

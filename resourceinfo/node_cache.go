@@ -70,16 +70,16 @@ func NewNodeInfoCache(hostKubeClient *kubernetes.Clientset) *NodeCache {
 	}
 }
 
-func (c *NodeCache) InitNodeInfoCache( /*scheduliungQ *SchedulingQueue*/ ) {
-	nodes, _ := c.HostKubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func (c *NodeCache) InitNodeInfoCache( /*scheduliungQ *SchedulingQueue*/ ) error {
+	nodes, err := c.HostKubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Println("<error> Get Nodes In Cluster Error-", err)
+		return err
+	}
 	// pods, _ := c.HostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
-<<<<<<< HEAD
 		if !IsMasterNode(&node) {
-=======
-		if !isNonGPUNode(&node) { //nongpunode여도 추가하는걸로 수정하기
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 			fmt.Println("[node name]: ", node.Name)
 			c.AddNode(node) //nodeinfolist에 node 추가, imagestate에 이미지 추가
 		}
@@ -92,9 +92,10 @@ func (c *NodeCache) InitNodeInfoCache( /*scheduliungQ *SchedulingQueue*/ ) {
 	// 		scheduliungQ.Add_AvtiveQ(podPtr)
 	// 	}
 	// }
+
+	return nil
 }
 
-<<<<<<< HEAD
 const (
 	control_plane = "node-role.kubernetes.io/control-plane"
 	master        = "node-role.kubernetes.io/master"
@@ -110,19 +111,13 @@ func IsMasterNode(node *corev1.Node) bool {
 	}
 }
 
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 //metric update, score init
 func (c *NodeCache) DumpCache() error {
 	fmt.Println("[Dump Node Info Cache]")
 
-<<<<<<< HEAD
-	fmt.Println("(0) available node count: ", c.AvailableNodeCount)
+	fmt.Println("(0) node count(availavle/total): (", c.AvailableNodeCount, "/", c.TotalNodeCount, ")")
 	for nodeName, nodeInfo := range c.NodeInfoList {
 		fmt.Println("===Node List===")
-=======
-	for nodeName, nodeInfo := range c.NodeInfoList {
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		fmt.Println("(1) node name {", nodeName, "}")
 
 		fmt.Println("(2) pods: ")
@@ -138,33 +133,43 @@ func (c *NodeCache) DumpCache() error {
 		// }
 		// fmt.Println()
 
-		fmt.Print("(3) num of image: ", len(nodeInfo.ImageStates), "\n")
+		fmt.Println("(3) num of image: ", len(nodeInfo.ImageStates))
 
-		fmt.Println("(4) gpu name: ")
-		for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
-			fmt.Println("- ", i, ":", uuid)
-		}
+		// fmt.Println("(4) GPU Names: ")
+		// for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
+		// 	fmt.Println("- ", i, ":", uuid)
+		// }
 
-<<<<<<< HEAD
-		fmt.Println("(5) total gpu count: ", nodeInfo.NodeMetric.TotalGPUCount)
-=======
-		fmt.Println("(5) available node count: ", c.AvailableNodeCount)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
+		fmt.Println("(5) Total GPU Count: ", nodeInfo.NodeMetric.TotalGPUCount)
 
-		fmt.Print("(6) used ports: ")
+		fmt.Print("(6) Used Ports: ")
 		for port, _ := range nodeInfo.UsedPorts {
 			fmt.Print(port, ", ")
 		}
 		fmt.Println()
 
-		fmt.Println("(7) nvlink list: ")
-<<<<<<< HEAD
+		fmt.Println("(7) NVLink List: ")
 		for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
-			fmt.Println("-", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Link)
+			fmt.Println("-", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Lane)
 		}
 		fmt.Println()
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
+
+		fmt.Println("(8) Node Memory(Used/Total): ", nodeInfo.NodeMetric.MemoryUsed, "/", nodeInfo.NodeMetric.MemoryTotal)
+		fmt.Println("(9) Node CPU(Used/Total): ", nodeInfo.NodeMetric.MilliCPUUsed, "/", nodeInfo.NodeMetric.MilliCPUTotal)
+		fmt.Println("(10) Node Storage(Used/Total): ", nodeInfo.NodeMetric.StorageUsed, "/", nodeInfo.NodeMetric.StorageTotal)
+
+		fmt.Print("(12) gpu Info: ")
+		for _, gpu := range nodeInfo.GPUMetrics {
+			fmt.Println("---")
+			fmt.Print("GPU Name: ", gpu.GPUName)
+			fmt.Print("GPU Architecture: ", gpu.GPUArch)
+			fmt.Print("GPU Flops: ", gpu.GPUFlops)
+			fmt.Print("GPU Memory(Free/Used/Total): ", gpu.GPUMemoryFree, "/", gpu.GPUMemoryUsed, "/", gpu.GPUMemoryTotal)
+			fmt.Print("GPU Power(Free/Total): ", gpu.GPUPowerUsed, "/", gpu.GPUPowerUsed)
+			fmt.Print("GPU Utilization: ", gpu.GPUUtil)
+			fmt.Print("GPU PodCount: ", gpu.PodCount)
+		}
+		fmt.Println()
 	}
 
 	return nil
@@ -204,6 +209,19 @@ func (cache *NodeCache) removeNodeInfoFromList(name string) {
 	delete(cache.NodeInfoList, name)
 }
 
+func (cache *NodeCache) RemovePodStates(pod *corev1.Pod) {
+	ok, _ := cache.CheckPodStateExist(pod)
+	if ok {
+		key, err := GetPodKey(pod)
+		if err != nil {
+			return
+		}
+		delete(cache.PodStates, key)
+	} else {
+		fmt.Println("there's no pod status {", pod.Name, "}")
+	}
+}
+
 func (cache *NodeCache) removePodStates(node *corev1.Node) {
 	n, ok := cache.NodeInfoList[node.Name]
 	if !ok {
@@ -234,7 +252,6 @@ func (cache *NodeCache) AddPodState(pod corev1.Pod, s string) error {
 	return nil
 }
 
-<<<<<<< HEAD
 func (cache *NodeCache) UpdatePodState(pod *corev1.Pod, s string) error {
 	key, err := GetPodKey(pod)
 	if err != nil {
@@ -243,15 +260,6 @@ func (cache *NodeCache) UpdatePodState(pod *corev1.Pod, s string) error {
 
 	cache.PodStates[key].State = s
 	return nil
-=======
-func (cache *NodeCache) ChangePodState(pod *corev1.Pod, s string) {
-	key, err := GetPodKey(pod)
-	if err != nil {
-		return
-	}
-
-	cache.PodStates[key].State = s
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func (cache *NodeCache) CheckPodStateExist(pod *corev1.Pod) (bool, string) {
@@ -291,21 +299,12 @@ func (cache *NodeCache) CheckPodStateExist(pod *corev1.Pod) (bool, string) {
 // 	return count, nil
 // }
 
-<<<<<<< HEAD
 // func (cache *NodeCache) AssumePod(pod *corev1.Pod) error {
 // 	cache.mu.Lock()
 // 	defer cache.mu.Unlock()
 
 // 	return cache.UpdatePodState(pod, Assumed)
 // }
-=======
-func (cache *NodeCache) AssumePod(pod *corev1.Pod) error {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
-	return cache.AddPodState(*pod, Assumed)
-}
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 // func (cache *Cache) FinishBinding(pod *corev1.Pod) error {
 // 	return cache.finishBinding(pod, time.Now())
@@ -573,10 +572,7 @@ func (cache *NodeCache) AddNode(node corev1.Node) error {
 	}
 	n = NewNodeInfo()
 	cache.NodeInfoList[node.Name] = n
-<<<<<<< HEAD
 	cache.TotalNodeCount++
-=======
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	podsInNode, _ := cache.HostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + node.Name,
@@ -591,7 +587,6 @@ func (cache *NodeCache) AddNode(node corev1.Node) error {
 		}
 	}
 
-<<<<<<< HEAD
 	err := n.InitNodeInfo(&node, cache.HostKubeClient)
 	if err != nil {
 		fmt.Println("<error> cannot init node info - ", err)
@@ -599,27 +594,14 @@ func (cache *NodeCache) AddNode(node corev1.Node) error {
 	}
 
 	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
+	cache.addNodeImageStates(&node, n)
+	n.SetNode(&node)
 	cache.DumpCache() //확인용
-	cache.addNodeImageStates(&node, n)
-	n.SetNode(&node)
-=======
-	n.InitNodeInfo(&node, cache.HostKubeClient)
-	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
-
-	cache.addNodeImageStates(&node, n)
-	n.SetNode(&node)
-	cache.TotalNodeCount++
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 
 	return nil
 }
 
-<<<<<<< HEAD
 func (cache *NodeCache) UpdateNode(oldNode, newNode *corev1.Node) error {
-=======
-//이미지만 업데이트? 다른 리소스 업데이트면 어떻게?
-func (cache *NodeCache) UpdateNode(oldNode, newNode *corev1.Node) error /* *NodeInfo */ {
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
@@ -627,29 +609,14 @@ func (cache *NodeCache) UpdateNode(oldNode, newNode *corev1.Node) error /* *Node
 	if !ok {
 		n = NewNodeInfo()
 		cache.NodeInfoList[newNode.Name] = n
-<<<<<<< HEAD
-=======
-		// cache.nodeTree.addNode(newNode)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	} else {
 		cache.removeNodeImageStates(n.Node())
 	}
 
-<<<<<<< HEAD
-=======
-	n.InitNodeInfo(newNode, cache.HostKubeClient)
-	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
-
-	// cache.nodeTree.updateNode(oldNode, newNode)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 	cache.addNodeImageStates(newNode, n)
 	n.SetNode(newNode)
 
 	return nil
-<<<<<<< HEAD
-=======
-	/*return n.Clone()*/
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 // RemoveNode removes a node from the cache's tree.
@@ -681,9 +648,7 @@ func (cache *NodeCache) RemoveNode(node *corev1.Node) error {
 func (cache *NodeCache) addNodeImageStates(node *corev1.Node, nodeInfo *NodeInfo) {
 	newSum := make(map[string]*ImageStateSummary)
 
-	// fmt.Println("image num [")
 	for _, image := range node.Status.Images {
-		// fmt.Print(i, ",")
 		for _, name := range image.Names {
 			// update the entry in imageStates
 			state, ok := cache.ImageStates[name]
@@ -702,8 +667,8 @@ func (cache *NodeCache) addNodeImageStates(node *corev1.Node, nodeInfo *NodeInfo
 			}
 		}
 	}
-	// fmt.Println("]")
 	nodeInfo.ImageStates = newSum
+	fmt.Println("newsum:", len(newSum))
 }
 
 // removeNodeImageStates removes the given node record from image entries having the node

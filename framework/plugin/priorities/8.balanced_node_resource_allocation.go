@@ -25,10 +25,9 @@ type BalancedNodeResourceAllocation struct{}
 func (pl BalancedNodeResourceAllocation) Name() string {
 	return "BalancedNodeResourceAllocation"
 }
-<<<<<<< HEAD:framework/plugin/priorities/8.balanced_node_resource_allocation.go
 
 func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#8. ", pl.Name())
+	fmt.Println("#8.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -36,42 +35,26 @@ func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-=======
-
-func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#8. ", pl.Name())
-	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeInfo.PluginResult.IsFiltered {
-	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
-	// 	}
-	// }
-}
-
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/balanced_resource_allocation.go
 func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			allocable := nodeinfo.Allocatable
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
+			std := float64(0)
 
-			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)
-			memoryFraction := fractionOfCapacity(requested.Memory, allocable.Memory)
-			volumeFraction := fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage)
-			if cpuFraction >= 1 || memoryFraction >= 1 || volumeFraction >= 1 {
-				nodeScore = 0
-			} else {
-				mean := (cpuFraction + memoryFraction + volumeFraction) / float64(3)
-				variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) + ((memoryFraction - mean) * (memoryFraction - mean)) + ((volumeFraction - mean) * (volumeFraction - mean))) / float64(3))
-				nodeScore = (1 - variance) * 100
-			}
-
-<<<<<<< HEAD:framework/plugin/priorities/8.balanced_node_resource_allocation.go
-			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
-=======
-			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * (1 / r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/balanced_resource_allocation.go
-
+			cpuFraction := math.Min(fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU), 1)
+			memoryFraction := math.Min(fractionOfCapacity(requested.Memory, allocable.Memory), 1)
+			volumeFraction := math.Min(fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage), 1)
+			fmt.Println("&", cpuFraction, " ", memoryFraction, " ", volumeFraction)
+			mean := (cpuFraction + memoryFraction + volumeFraction) / float64(3)
+			variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) +
+				((memoryFraction - mean) * (memoryFraction - mean)) +
+				((volumeFraction - mean) * (volumeFraction - mean))) / float64(3))
+			std = math.Sqrt(variance / float64(3))
+			nodeScore = float64(int(float64(1)-std) * r.MaxScore)
+			fmt.Println("&", std, " ", nodeScore)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore))
 		}
 	}
 

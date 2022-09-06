@@ -19,19 +19,20 @@ import (
 
 	r "gpu-scheduler/resourceinfo"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 )
 
-type NodeAffinity struct{}
+type NodeAffinity struct {
+	addedPrefSchedTerms *nodeaffinity.PreferredSchedulingTerms
+}
 
 func (pl NodeAffinity) Name() string {
 	return "NodeAffinity"
 }
 
 func (pl NodeAffinity) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#1. ", pl.Name())
+	fmt.Println("#1.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -41,70 +42,109 @@ func (pl NodeAffinity) Debugg(nodeInfoCache *r.NodeCache) {
 
 func (pl NodeAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
-	affinity := newPod.Pod.Spec.Affinity
+	//PreScore
+	preferredNodeAffinity, err := getPodPreferredNodeAffinity(newPod.Pod)
+	if err != nil {
+		return
+	}
+	state := &preScoreState1{
+		preferredNodeAffinity: preferredNodeAffinity,
+	}
 
+	//Score
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 
-			nodeScore, count, weight := int(0), 0, int32(0)
-			if affinity != nil && affinity.NodeAffinity != nil && affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
-				for i := range affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
-
-					preferredSchedulingTerm := &affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
-					if preferredSchedulingTerm.Weight == 0 {
-						continue
-					}
-
-					nodeSelector, err := NodeSelectorRequirementsAsSelector(preferredSchedulingTerm.Preference.MatchExpressions)
-					if err != nil {
-						return // 여기 원래 return err인거 처리
-					}
-
-					if nodeSelector.Matches(labels.Set(nodeinfo.Node().Labels)) {
-						count += 1
-						weight += preferredSchedulingTerm.Weight
-					}
-				}
+			var count int64
+			if pl.addedPrefSchedTerms != nil {
+				count += pl.addedPrefSchedTerms.Score(nodeinfo.Node())
 			}
 
-			if count > 0 {
-				nodeScore = int(weight) * 1 / int(count)
+			if state.preferredNodeAffinity != nil {
+				count += state.preferredNodeAffinity.Score(nodeinfo.Node())
 			}
 
-			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+			fmt.Println("scoring>node_affinity: ", count, "scode, node: ", nodeinfo.Node().Name)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count)))
 		}
 	}
 
 }
 
-func NodeSelectorRequirementsAsSelector(nsm []corev1.NodeSelectorRequirement) (labels.Selector, error) {
-	if len(nsm) == 0 {
-		return labels.Nothing(), nil
+func getPodPreferredNodeAffinity(pod *v1.Pod) (*nodeaffinity.PreferredSchedulingTerms, error) {
+	affinity := pod.Spec.Affinity
+	if affinity != nil && affinity.NodeAffinity != nil && affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+		return nodeaffinity.NewPreferredSchedulingTerms(affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
 	}
-	selector := labels.NewSelector()
-	for _, expr := range nsm {
-		var op selection.Operator
-		switch expr.Operator {
-		case corev1.NodeSelectorOpIn:
-			op = selection.In
-		case corev1.NodeSelectorOpNotIn:
-			op = selection.NotIn
-		case corev1.NodeSelectorOpExists:
-			op = selection.Exists
-		case corev1.NodeSelectorOpDoesNotExist:
-			op = selection.DoesNotExist
-		case corev1.NodeSelectorOpGt:
-			op = selection.GreaterThan
-		case corev1.NodeSelectorOpLt:
-			op = selection.LessThan
-		default:
-			return nil, fmt.Errorf("%q is not a valid node selector operator", expr.Operator)
-		}
-		r, err := labels.NewRequirement(expr.Key, op, expr.Values)
-		if err != nil {
-			return nil, err
-		}
-		selector = selector.Add(*r)
-	}
-	return selector, nil
+	return nil, nil
 }
+
+// func (pl NodeAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+// 	affinity := newPod.Pod.Spec.Affinity
+
+// 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+// 		if !nodeinfo.PluginResult.IsFiltered {
+
+// 			nodeScore, count, weight := int(0), 0, int32(0)
+// 			if affinity != nil && affinity.NodeAffinity != nil && affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+// 				for i := range affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+
+// 					preferredSchedulingTerm := &affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution[i]
+// 					if preferredSchedulingTerm.Weight == 0 {
+// 						continue
+// 					}
+
+// 					nodeSelector, err := NodeSelectorRequirementsAsSelector(preferredSchedulingTerm.Preference.MatchExpressions)
+// 					if err != nil {
+// 						return // 여기 원래 return err인거 처리
+// 					}
+
+// 					if nodeSelector.Matches(labels.Set(nodeinfo.Node().Labels)) {
+// 						count += 1
+// 						weight += preferredSchedulingTerm.Weight
+// 					}
+// 				}
+// 			}
+
+// 			if count > 0 {
+// 				nodeScore = int(weight) * 1 / int(count)
+// 			}
+
+// 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+// 		}
+// 	}
+
+// }
+
+// func NodeSelectorRequirementsAsSelector(nsm []corev1.NodeSelectorRequirement) (labels.Selector, error) {
+// 	if len(nsm) == 0 {
+// 		return labels.Nothing(), nil
+// 	}
+// 	selector := labels.NewSelector()
+// 	for _, expr := range nsm {
+// 		var op selection.Operator
+// 		switch expr.Operator {
+// 		case corev1.NodeSelectorOpIn:
+// 			op = selection.In
+// 		case corev1.NodeSelectorOpNotIn:
+// 			op = selection.NotIn
+// 		case corev1.NodeSelectorOpExists:
+// 			op = selection.Exists
+// 		case corev1.NodeSelectorOpDoesNotExist:
+// 			op = selection.DoesNotExist
+// 		case corev1.NodeSelectorOpGt:
+// 			op = selection.GreaterThan
+// 		case corev1.NodeSelectorOpLt:
+// 			op = selection.LessThan
+// 		default:
+// 			return nil, fmt.Errorf("%q is not a valid node selector operator", expr.Operator)
+// 		}
+// 		r, err := labels.NewRequirement(expr.Key, op, expr.Values)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		selector = selector.Add(*r)
+// 	}
+// 	return selector, nil
+// }

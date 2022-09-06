@@ -19,7 +19,7 @@ import (
 
 	r "gpu-scheduler/resourceinfo"
 
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 type TaintToleration struct{}
@@ -27,10 +27,9 @@ type TaintToleration struct{}
 func (pl TaintToleration) Name() string {
 	return "TaintToleration"
 }
-<<<<<<< HEAD:framework/plugin/priorities/2.taint_toleration.go
 
 func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#2. ", pl.Name())
+	fmt.Println("#2.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -38,63 +37,46 @@ func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-=======
-
-func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#2. ", pl.Name())
-	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeInfo.PluginResult.IsFiltered {
-	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
-	// 	}
-	// }
-}
-
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/taint_toleration.go
 func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+	state := &preScoreState2{
+		tolerationsPreferNoSchedule: tolerationsPreferNoSchedule,
+	}
+
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			nodeScore := 100
-			tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
-			taintsCount := countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, tolerationsPreferNoSchedule)
-
-			if taintsCount > 0 {
-				nodeScore = 0
-			}
-
-<<<<<<< HEAD:framework/plugin/priorities/2.taint_toleration.go
-			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
-=======
-			nodeinfo.PluginResult.NodeScore += math.Round(float64(nodeScore) * float64(1/r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/taint_toleration.go
+			score := int64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, state.tolerationsPreferNoSchedule))
+			fmt.Println("scoring>taint_toleration: ", score, "scode, node: ", nodeinfo.Node().Name)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score)))
 		}
 	}
 }
 
-func getAllTolerationPreferNoSchedule(tolerations []corev1.Toleration) (tolerationList []corev1.Toleration) {
+func getAllTolerationPreferNoSchedule(tolerations []v1.Toleration) (tolerationList []v1.Toleration) {
 	for _, toleration := range tolerations {
 		// Empty effect means all effects which includes PreferNoSchedule, so we need to collect it as well.
-		if len(toleration.Effect) == 0 || toleration.Effect == corev1.TaintEffectPreferNoSchedule {
+		if len(toleration.Effect) == 0 || toleration.Effect == v1.TaintEffectPreferNoSchedule {
 			tolerationList = append(tolerationList, toleration)
 		}
 	}
 	return
 }
 
-func countIntolerableTaintsPreferNoSchedule(taints []corev1.Taint, tolerations []corev1.Toleration) (intolerableTaints int) {
+func countIntolerableTaintsPreferNoSchedule(taints []v1.Taint, tolerations []v1.Toleration) (intolerableTaints int) {
 	for _, taint := range taints {
 		// check only on taints that have effect PreferNoSchedule
-		if taint.Effect != corev1.TaintEffectPreferNoSchedule {
+		if taint.Effect != v1.TaintEffectPreferNoSchedule {
 			continue
 		}
 
-		if !TolerationsTolerateTaint(tolerations, &taint) {
+		if !tolerationsTolerateTaint(tolerations, &taint) {
 			intolerableTaints++
 		}
 	}
 	return
 }
 
-func TolerationsTolerateTaint(tolerations []corev1.Toleration, taint *corev1.Taint) bool {
+func tolerationsTolerateTaint(tolerations []v1.Toleration, taint *v1.Taint) bool {
 	for i := range tolerations {
 		if tolerations[i].ToleratesTaint(taint) {
 			return true
@@ -102,3 +84,52 @@ func TolerationsTolerateTaint(tolerations []corev1.Toleration, taint *corev1.Tai
 	}
 	return false
 }
+
+// func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+// 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+// 		if !nodeinfo.PluginResult.IsFiltered {
+// 			nodeScore := 100
+// 			tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+// 			taintsCount := countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, tolerationsPreferNoSchedule)
+
+// 			if taintsCount > 0 {
+// 				nodeScore = 0
+// 			}
+
+// 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+// 		}
+// 	}
+// }
+
+// func getAllTolerationPreferNoSchedule(tolerations []corev1.Toleration) (tolerationList []corev1.Toleration) {
+// 	for _, toleration := range tolerations {
+// 		// Empty effect means all effects which includes PreferNoSchedule, so we need to collect it as well.
+// 		if len(toleration.Effect) == 0 || toleration.Effect == corev1.TaintEffectPreferNoSchedule {
+// 			tolerationList = append(tolerationList, toleration)
+// 		}
+// 	}
+// 	return
+// }
+
+// func countIntolerableTaintsPreferNoSchedule(taints []corev1.Taint, tolerations []corev1.Toleration) (intolerableTaints int) {
+// 	for _, taint := range taints {
+// 		// check only on taints that have effect PreferNoSchedule
+// 		if taint.Effect != corev1.TaintEffectPreferNoSchedule {
+// 			continue
+// 		}
+
+// 		if !TolerationsTolerateTaint(tolerations, &taint) {
+// 			intolerableTaints++
+// 		}
+// 	}
+// 	return
+// }
+
+// func TolerationsTolerateTaint(tolerations []corev1.Toleration, taint *corev1.Taint) bool {
+// 	for i := range tolerations {
+// 		if tolerations[i].ToleratesTaint(taint) {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }

@@ -3,10 +3,11 @@ kind: Job
 metadata:
   name: kjhtest-nbody-benchmark-mps
   namespace: userpod
-  annotations: 
-    clusterName: kubernetes
 spec:
   template:
+    # metadata:
+    #   annotations:
+    #     clusterName: keti-gpu-cluster2
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler
@@ -23,7 +24,7 @@ spec:
               keti.com/mpsgpu: 1
             requests:
               cpu: "250m"
-              memory: "6400Mi"
+              memory: "5000Mi"
           volumeMounts:
             - name: nvidia-mps
               mountPath: /tmp/nvidia-mps 

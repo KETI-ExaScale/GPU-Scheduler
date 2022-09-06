@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 )
@@ -19,38 +20,58 @@ var processorLock = &sync.Mutex{}
 var Scheduler *GPUScheduler
 
 type GPUScheduler struct {
-	NodeInfoCache    *r.NodeCache
-	SchedulingPolicy *SchedulingPolicy
-	SchedulingQueue  *r.SchedulingQueue
-	NewPod           *r.QueuedPodInfo
-	Framework        framework.GPUSchedulerInterface
-	ScheduleResult   *r.ScheduleResult
-	ClusterInfoCache *r.ClusterCache
+	NodeInfoCache           *r.NodeCache
+	SchedulingPolicy        *SchedulingPolicy
+	SchedulingQueue         *r.SchedulingQueue
+	NewPod                  *r.QueuedPodInfo
+	Framework               framework.GPUSchedulerInterface
+	ScheduleResult          *r.ScheduleResult
+	ClusterInfoCache        *r.ClusterCache
+	ClusterManagerHost      string
+	AvailableClusterManager bool
 }
 
-func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) *GPUScheduler {
+func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error) {
 	sq := r.NewQueue()
 
 	sp := NewSchedulingPolicy()
 
 	nc := r.NewNodeInfoCache(hostKubeClient)
-	nc.InitNodeInfoCache( /*sq*/ )
+	err := nc.InitNodeInfoCache()
+	if err != nil {
+		fmt.Println("<error> cannot find any node in cluster!-", err)
+		//내 클러스터에는 배포 가능한 노드가 없음(노드를 가져올 수 없음)
+		//다른 클러스터엔 가능할수도
+	}
 	nc.DumpCache()
 
 	fwk := framework.GPUPodSpreadFramework()
 
 	sr := r.NewScheduleResult()
-	cc := r.NewClusterCache()
+	cc, err := r.NewClusterCache()
+	if err != nil {
+		fmt.Println("create is only available to my cluster")
+		//내 클러스터에만 배포 가능
+	}
+
+	cmhost := findClusterManagerHost(hostKubeClient)
+	if cmhost == "" {
+		fmt.Println("cannot find cluster-manager in cluster!")
+		fmt.Println("cluster scheduling is only available to my cluster")
+		//내 클러스터에만 배포 가능
+	}
 
 	return &GPUScheduler{
-		NodeInfoCache:    nc,
-		SchedulingPolicy: sp,
-		SchedulingQueue:  sq,
-		NewPod:           nil,
-		Framework:        fwk,
-		ScheduleResult:   sr,
-		ClusterInfoCache: cc,
-	}
+		NodeInfoCache:           nc,
+		SchedulingPolicy:        sp,
+		SchedulingQueue:         sq,
+		NewPod:                  nil,
+		Framework:               fwk,
+		ScheduleResult:          sr,
+		ClusterInfoCache:        cc,
+		ClusterManagerHost:      cmhost,
+		AvailableClusterManager: false,
+	}, nil
 }
 
 func (sched *GPUScheduler) Run(ctx context.Context) {
@@ -70,14 +91,12 @@ type SchedulingPolicy struct {
 }
 
 func NewSchedulingPolicy() *SchedulingPolicy {
-	var (
-		nodeWeight             float64
-		gpuWeight              float64
-		reschedulePermit       bool
-		nodeReservetionPermit  bool
-		nvlinkWeightPercentage int64
-		gpuAllocatePrefer      bool
-	)
+	nodeWeight := float64(0.4)
+	gpuWeight := float64(0.3)
+	reschedulePermit := false
+	nodeReservetionPermit := false
+	nvlinkWeightPercentage := int64(10)
+	gpuAllocatePrefer := true
 
 	p, err := exec.Command("cat", "/gpu-scheduler-configmap/node-gpu-score-weight").Output()
 	if err == nil {
@@ -143,6 +162,68 @@ func (sched *GPUScheduler) NextPod() *r.QueuedPodInfo {
 	}
 
 	return newPod
+}
+
+func findClusterManagerHost(hostKubeClient *kubernetes.Clientset) string {
+	pods, _ := hostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+
+	for _, pod := range pods.Items {
+		if strings.HasPrefix(pod.Name, "keti-cluster-manager") {
+			return pod.Status.PodIP
+		}
+	}
+	return ""
+}
+
+func (sched *GPUScheduler) InitClusterManager() error {
+	fmt.Println("@ init cluster manager")
+
+	if sched.ClusterManagerHost == "" {
+		fmt.Println("Init Cluster Manager - cluster manager unavailable!")
+		return nil
+	}
+
+	//testpod 동작
+	initPod := r.NewQueuedPodInfo(nil)
+	fmt.Println("!!!!init cluster manager pod requested resource!!!!", initPod.PodInfo.RequestedResource)
+	sched.Framework = framework.InitNodeScoreFramework()
+
+	err := sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
+	if err != nil {
+		fmt.Println("<error>Init Cluster Maanger->Run scoring plugins error")
+		return err
+	}
+
+	var initList []InitStruct
+	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
+		nodeScore := calcNodeScore(nodeInfo, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
+		initStruct := InitStruct{nodeName, nodeScore, nodeInfo.NodeMetric.TotalGPUCount}
+		fmt.Println("#Init Info (", nodeName, ",", nodeScore, ",", nodeInfo.NodeMetric.TotalGPUCount, ")")
+
+		initList = append(initList, initStruct)
+	}
+
+	success, err := InitMyClusterManager(sched.ClusterManagerHost, initList)
+	if err != nil || !success {
+		fmt.Println("<error> Init My Cluster Manager Error-", err)
+	}
+	sched.AvailableClusterManager = true
+
+	return nil
+}
+
+func calcNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float64) int64 {
+	nodeScore := float64(nodeInfo.PluginResult.NodeScore)
+	gpuScore := float64(0)
+	cnt := float64(0)
+	for _, score := range nodeInfo.PluginResult.GPUScores {
+		gpuScore += float64(score.GPUScore)
+		cnt++
+	}
+	gpuScore = gpuScore / cnt
+	totalScore := nodeScore*nodeWeight + gpuScore*gpuWeight
+	fmt.Println("nodescore:", nodeScore, " gpuscore:", gpuScore, " totalscore:", totalScore)
+	return int64(totalScore)
 }
 
 // func (sched *GPUScheduler) InitPluginResult() {

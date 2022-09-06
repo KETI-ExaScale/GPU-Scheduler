@@ -54,6 +54,8 @@ func patchPodAnnotation(bestGPU string) error {
 }
 
 func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, result r.ScheduleResult) {
+	fmt.Println("[STEP 5] Binding {", newpod.Pod.Name, "}")
+
 	_, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -61,7 +63,16 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	// 	return
 	// }
 
-	fmt.Println("[STEP 5] Binding {", newpod.Pod.Name, "}")
+	ip := sched.ClusterManagerHost
+	reScore := int(float64(result.TotalScore) * 0.9) //노드 스코어를 줄여야함 -> 구체적으로
+	fmt.Println("score: ", result.TotalScore, ",", reScore)
+	success, err := UpdateNodeScore(ip, result.BestNode, reScore)
+	if err != nil {
+		fmt.Println("<error> update node score grpc error-", err)
+	}
+	if !success {
+		fmt.Println("<error> failed update node score")
+	}
 
 	//파드 스펙에 GPU 업데이트
 	if newpod.IsGPUPod {
@@ -90,7 +101,7 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 		},
 	}
 
-	err := sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	err = sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
 		sched.SchedulingQueue.Add_BackoffQ(&newpod)
 		fmt.Println("+++++binding error: ", err, "+++++")

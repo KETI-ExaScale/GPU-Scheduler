@@ -27,20 +27,12 @@ func (pl NodeResourcesFit) Name() string {
 }
 
 func (pl NodeResourcesFit) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#7. ", pl.Name())
-<<<<<<< HEAD:framework/plugin/priorities/7.node_resources_fit.go
+	fmt.Println("#7.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
 		}
 	}
-=======
-	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeInfo.PluginResult.IsFiltered {
-	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
-	// 	}
-	// }
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/least_requested_resource.go
 }
 
 func (pl NodeResourcesFit) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -66,11 +58,7 @@ func (pl NodeResourcesFit) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPod
 			} else {
 				nodeScore += float64(allocatable.EphemeralStorage-requested.EphemeralStorage) / float64(allocatable.EphemeralStorage) * 20
 			}
-<<<<<<< HEAD:framework/plugin/priorities/7.node_resources_fit.go
-			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
-=======
-			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * float64(1/r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85:algorithm/priorities/least_requested_resource.go
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore * 0.3))
 
 		}
 	}

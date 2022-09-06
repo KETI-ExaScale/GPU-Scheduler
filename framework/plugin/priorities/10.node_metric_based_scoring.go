@@ -27,14 +27,10 @@ func (pl NodeMetricBasedScoring) Name() string {
 }
 
 func (pl NodeMetricBasedScoring) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#10. ", pl.Name())
+	fmt.Println("#10.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-<<<<<<< HEAD
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
-=======
-			fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 		}
 	}
 }
@@ -42,12 +38,8 @@ func (pl NodeMetricBasedScoring) Debugg(nodeInfoCache *r.NodeCache) {
 func (pl NodeMetricBasedScoring) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			nodeScore := float64(100)
-<<<<<<< HEAD
-			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
-=======
-			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * (1 / r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
+			nodeScore := float64(0)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore))
 		}
 	}
 

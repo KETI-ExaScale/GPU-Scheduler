@@ -53,7 +53,7 @@ func (q *SchedulingQueue) Add_AvtiveQ(pod *v1.Pod) error {
 	defer q.lock.Unlock()
 
 	was_empty := q.Empty()
-	pInfo := newQueuedPodInfo(pod)
+	pInfo := NewQueuedPodInfo(pod)
 	q.activeQ.PushBack(pInfo)
 
 	// fmt.Println("add active q")
@@ -82,32 +82,22 @@ func (q *SchedulingQueue) PrintbackoffQ() {
 }
 
 func (q *SchedulingQueue) Pop_AvtiveQ() (*QueuedPodInfo, error) {
-	// fmt.Println("Pop_ActiveQ")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
 	for q.Empty() {
-		// fmt.Println("check1")
 		if q.closed {
 			return nil, fmt.Errorf("queueClosed")
 		}
 		q.cond.Wait()
-		// fmt.Println("check2")
 	}
 
 	obj := q.activeQ.Front()
 	if obj == nil {
-		// fmt.Println("nil!!!")
+		fmt.Println("nil!!!")
 	}
 	pInfo := obj.Value.(*QueuedPodInfo)
 	q.activeQ.Remove(obj)
-
-	// fmt.Println("pop active q")
-	// q.PrintQ()
-
-	// if pInfo == nil {
-	// 	return q.Wait_and_pop()
-	// }
 
 	pInfo.Attempts++
 	return pInfo, nil
@@ -253,12 +243,7 @@ func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
 			pInfo := updatePod(oldPodInfo, newPod)
 			pInfo.Activate()
 			q.activeQ.PushBack(pInfo)
-<<<<<<< HEAD
 		} else if exists, oldPodInfo := q.activeQLookup(oldPod.UID); exists {
-=======
-		}
-		if exists, oldPodInfo := q.activeQLookup(oldPod.UID); exists {
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 			pInfo := updatePod(oldPodInfo, newPod)
 			q.activeQ.PushBack(pInfo)
 		}
@@ -266,7 +251,7 @@ func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
 	}
 
 	// If pod is not in any of the queues, we put it in the active queue.
-	pInfo := newQueuedPodInfo(newPod)
+	pInfo := NewQueuedPodInfo(newPod)
 	q.activeQ.PushBack(pInfo)
 
 	if was_empty {

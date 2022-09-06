@@ -4,8 +4,10 @@ metadata:
   name: kjhtest-nbody-benchmark-mps2
   namespace: userpod
 spec:
-  #parallelism: 2
   template:
+    # metadata:
+    #   annotations:
+    #     clusterName: gpu1
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler

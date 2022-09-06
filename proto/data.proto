@@ -45,11 +45,7 @@ message GPUMessage {
     int64 gpu_temp = 7;
     int64 gpu_power = 8;
     int64 mps_count = 9;
-<<<<<<< HEAD
     int64 gpu_flops = 10;
-=======
-    int64 gpu_flops = 10; 
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
     int64 gpu_arch = 11;
     int64 gpu_tpower = 12;
     int64 gpu_util = 13;

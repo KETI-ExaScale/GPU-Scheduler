@@ -15,7 +15,6 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	r "gpu-scheduler/resourceinfo"
@@ -36,35 +35,22 @@ func (pl ImageLocality) Name() string {
 }
 
 func (pl ImageLocality) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#6. ", pl.Name())
-<<<<<<< HEAD
+	fmt.Println("#6.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
 		}
 	}
-=======
-	// for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeInfo.PluginResult.IsFiltered {
-	// 		fmt.Printf("-node {%s} score: %f\n", nodeName, nodeInfo.PluginResult.NodeScore)
-	// 	}
-	// }
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 func (pl ImageLocality) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-<<<<<<< HEAD
 			nodeScore := int(0)
 			nodeScore = int(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
-			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
-=======
-			nodeScore := float64(0)
-			nodeScore = float64(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
-			nodeinfo.PluginResult.NodeScore += math.Round(nodeScore * (1 / r.Ns))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
+			fmt.Println("scoring>image_locality: ", nodeScore, "scode, node: ", nodeinfo.Node().Name)
+			nodeinfo.PluginResult.NodeScore += nodeScore
 		}
 	}
 }
@@ -92,11 +78,7 @@ func calculatePriority(sumScores int64, numContainers int) int64 {
 		sumScores = maxThreshold
 	}
 
-<<<<<<< HEAD
 	return int64(r.MaxScore) * (sumScores - minThreshold) / (maxThreshold - minThreshold)
-=======
-	return int64(r.MaxNodeScore) * (sumScores - minThreshold) / (maxThreshold - minThreshold)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 }
 
 // normalizedImageName returns the CRI compliant name for a given image.

@@ -27,16 +27,12 @@ func (pl GPUTemperature) Name() string {
 }
 
 func (pl GPUTemperature) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#16 Scoring > ", pl.Name())
+	fmt.Println("#16.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
-=======
-					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -55,13 +51,8 @@ func (pl GPUTemperature) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 					} else if 86 < gpuTemp && gpuTemp < 94 {
 						nodeinfo.PluginResult.GPUScores[j].GPUScore -= 8
 					} else if 95 < gpuTemp {
-<<<<<<< HEAD
 						temp := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore - 100)
 						nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(temp, 0))
-=======
-						temp := nodeinfo.PluginResult.GPUScores[j].GPUScore - 100
-						nodeinfo.PluginResult.GPUScores[j].GPUScore = math.Max(temp, 0)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 					}
 				}
 			}

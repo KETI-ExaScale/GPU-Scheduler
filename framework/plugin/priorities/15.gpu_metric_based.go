@@ -27,16 +27,12 @@ func (pl GPUMerticBased) Name() string {
 }
 
 func (pl GPUMerticBased) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#15. ", pl.Name())
+	fmt.Println("#15.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-<<<<<<< HEAD
 					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
-=======
-					fmt.Printf("-node {%s} gpu {%s} score: %f\n", nodeName, gpu.UUID, gpu.GPUScore)
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}
@@ -49,11 +45,7 @@ func (pl GPUMerticBased) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 			for j, _ := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
 					gpuScore := float64(100)
-<<<<<<< HEAD
 					nodeinfo.PluginResult.GPUScores[j].GPUScore += int(math.Round(gpuScore / float64(r.Gs)))
-=======
-					nodeinfo.PluginResult.GPUScores[j].GPUScore += math.Round(gpuScore * (1 / r.Gs))
->>>>>>> c78b3aab458596cbc06a1a80d03f7cb202c02a85
 				}
 			}
 		}

@@ -1,0 +1,5002 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"gpu-scheduler/framework"
+	"gpu-scheduler/framework/plugin/predicates"
+	"gpu-scheduler/framework/plugin/priorities"
+	s "gpu-scheduler/scheduler"
+	"log"
+	"math"
+	"os"
+	"os/exec"
+	"os/signal"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"google.golang.org/grpc"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
+	"k8s.io/klog/v2"
+)
+
+func main() {
+	log.Println("-----Start GPU Scheduler-----")
+
+	quitChan := make(chan struct{})
+	var wg sync.WaitGroup
+
+	hostConfig, _ := rest.InClusterConfig()
+	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
+
+	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
+
+	s.Scheduler = s.NewGPUScheduler(hostKubeClient)
+
+	s.AddAllEventHandlers(s.Scheduler, informerFactory)
+	wg.Add(1)
+	go informerFactory.Core().V1().Pods().Informer().Run(quitChan)
+
+	wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.Scheduler.Run(ctx)
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	for {
+		select {
+		case <-signalChan:
+			log.Printf("Shutdown signal received, exiting...")
+			close(quitChan)
+			cancel()
+			wg.Wait()
+			os.Exit(0)
+		}
+	}
+}
+
+var processorLock = &sync.Mutex{}
+
+var Scheduler *GPUScheduler
+
+type GPUScheduler struct {
+	NodeInfoCache    *r.NodeCache
+	SchedulingPolicy *SchedulingPolicy
+	SchedulingQueue  *r.SchedulingQueue
+	NewPod           *r.QueuedPodInfo
+	Framework        framework.GPUSchedulerInterface
+	ScheduleResult   *r.ScheduleResult
+	ClusterInfoCache *r.ClusterCache
+}
+
+func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) *GPUScheduler {
+	sq := r.NewQueue()
+
+	sp := NewSchedulingPolicy()
+
+	nc := r.NewNodeInfoCache(hostKubeClient)
+	nc.InitNodeInfoCache( /*sq*/ )
+	nc.DumpCache()
+
+	fwk := framework.GPUPodSpreadFramework()
+
+	sr := r.NewScheduleResult()
+	cc := r.NewClusterCache()
+
+	return &GPUScheduler{
+		NodeInfoCache:    nc,
+		SchedulingPolicy: sp,
+		SchedulingQueue:  sq,
+		NewPod:           nil,
+		Framework:        fwk,
+		ScheduleResult:   sr,
+		ClusterInfoCache: cc,
+	}
+}
+
+func (sched *GPUScheduler) Run(ctx context.Context) {
+	sched.SchedulingQueue.Run()
+	wait.UntilWithContext(ctx, sched.preScheduling, 0)
+	sched.SchedulingQueue.Close()
+}
+
+type SchedulingPolicy struct {
+	NodeWeight             float64
+	GPUWeight              float64
+	ReSchedulePermit       bool
+	NodeReservationPermit  bool
+	NVLinkWeightPercentage int64
+	GPUAllocatePrefer      bool
+	changed                <-chan bool
+}
+
+func NewSchedulingPolicy() *SchedulingPolicy {
+	var (
+		nodeWeight             float64
+		gpuWeight              float64
+		reschedulePermit       bool
+		nodeReservetionPermit  bool
+		nvlinkWeightPercentage int64
+		gpuAllocatePrefer      bool
+	)
+
+	p, err := exec.Command("cat", "/gpu-scheduler-configmap/node-gpu-score-weight").Output()
+	if err == nil {
+		nodeWeight, _ = strconv.ParseFloat(strings.Split(string(p), " ")[0], 64)
+		gpuWeight, _ = strconv.ParseFloat(strings.Split(string(p), " ")[1], 64)
+	}
+
+	p, err = exec.Command("cat", "/gpu-scheduler-configmap/pod-re-schedule-permit").Output()
+	if err == nil {
+
+		reschedulePermit, _ = strconv.ParseBool(string(p))
+	}
+
+	p, err = exec.Command("cat", "/gpu-scheduler-configmap/node-reservation-permit").Output()
+	if err == nil {
+		nodeReservetionPermit, _ = strconv.ParseBool(string(p))
+	}
+
+	p, err = exec.Command("cat", "/gpu-scheduler-configmap/nvlink-weight-percentage").Output()
+	if err == nil {
+		nvlinkWeightPercentage, _ = strconv.ParseInt(string(p), 0, 64)
+	}
+
+	p, err = exec.Command("cat", "/gpu-scheduler-configmap/least-allocated-pod-prefer").Output()
+	if err == nil {
+		pp := string(p)
+		if pp == "spread" {
+			gpuAllocatePrefer = true
+		} else {
+			gpuAllocatePrefer = false
+		}
+	}
+
+	fmt.Println("<GPU Scheduler Policy List>")
+	fmt.Println("1.", r.Policy1)
+	fmt.Println("  -node weight : ", nodeWeight)
+	fmt.Println("  -gpu weight : ", gpuWeight)
+	fmt.Println("2.", r.Policy2)
+	fmt.Println("  -value : ", reschedulePermit)
+	fmt.Println("3.", r.Policy3)
+	fmt.Println("  -value : ", nodeReservetionPermit)
+	fmt.Println("4.", r.Policy4)
+	fmt.Println("  -value : ", nvlinkWeightPercentage)
+	fmt.Println("5.", r.Policy5)
+	fmt.Println("  -value : ", gpuAllocatePrefer)
+
+	return &SchedulingPolicy{
+		NodeWeight:             nodeWeight,
+		GPUWeight:              gpuWeight,
+		ReSchedulePermit:       reschedulePermit,
+		NodeReservationPermit:  nodeReservetionPermit,
+		NVLinkWeightPercentage: nvlinkWeightPercentage,
+		GPUAllocatePrefer:      gpuAllocatePrefer,
+		changed:                make(chan bool),
+	}
+}
+
+func (sched *GPUScheduler) NextPod() *r.QueuedPodInfo {
+	newPod, err := sched.SchedulingQueue.Pop_AvtiveQ()
+	if err != nil {
+		fmt.Print("NextPod Error : ", err)
+		return nil
+	}
+
+	return newPod
+}
+
+func (sched *GPUScheduler) UpdateCache() error {
+	fmt.Println("[STEP 1] Update Scheduler Resource Info")
+	fmt.Println("# Sending gRPC request...")
+
+	sched.ScheduleResult.InitResult()
+	sched.NodeInfoCache.AvailableNodeCount = 0
+
+	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
+		if nodeInfo.GRPCHost == "" {
+			ip := r.GetMetricCollectorIP(nodeInfo.Pods)
+			if ip == "" {
+				fmt.Printf("node {%v} cannot find GPU Metric Collector\n", nodeName)
+			} else {
+				nodeInfo.GRPCHost = ip
+			}
+		}
+
+		nodeInfo.PluginResult.InitPluginResult()
+		err := nodeInfo.NodeMetric.GetNodeMetric(nodeInfo.GRPCHost)
+		if err != nil {
+			fmt.Println("<error> failed to get node metric, reason:", err)
+			nodeInfo.PluginResult.IsFiltered = true
+			continue
+		}
+
+		for _, uuid := range nodeInfo.NodeMetric.GPU_UUID {
+			err := nodeInfo.GPUMetrics[uuid].GetGPUMetric(uuid, nodeInfo.GRPCHost)
+			if err != nil {
+				fmt.Println("<error> failed to get gpu metric, reason:", err)
+				continue
+			}
+
+			nodeInfo.PluginResult.GPUCountUp()
+		}
+
+		sched.NodeInfoCache.AvailableNodeCount++
+	}
+
+	return nil
+}
+
+func (sched *GPUScheduler) checkScheduleType() int {
+	test := sched.NewPod.Pod.GetAnnotations()
+	targetCluster := test["clusterName"]
+	fmt.Println("\n1. check pod annotation[clustername]: ", targetCluster)
+	fmt.Println("sched.ClusterInfoCache.MyClusterName: ", sched.ClusterInfoCache.MyClusterName)
+	if len(targetCluster) == 0 {
+		return 1
+	} else if targetCluster != sched.ClusterInfoCache.MyClusterName {
+		sched.NewPod.TargetCluster = targetCluster
+		return 2
+	} else {
+		return 3
+	}
+}
+
+func (sched *GPUScheduler) preScheduling(ctx context.Context) {
+	processorLock.Lock()
+	defer processorLock.Unlock()
+
+	sched.NewPod = sched.NextPod()
+	if sched.NewPod == nil || sched.NewPod.Pod == nil {
+		return
+	}
+	fmt.Println("- schedule pod { ", sched.NewPod.Pod.Name, " }")
+	sched.nodeScheduleOne(ctx)
+}
+
+func patchPodAnnotationClusterNameMarshal(clusterName string) ([]byte, error) {
+	fmt.Println("(test) patchPodAnnotationClusterNameMarshal")
+	patchAnnotations := map[string]interface{}{
+		"metadata": map[string]map[string]string{"annotations": {
+			"clusterName": clusterName,
+		}}}
+
+	return json.Marshal(patchAnnotations)
+}
+
+func patchPodAnnotationClusterName(clusterName string) error {
+	fmt.Println("\n3. Write clusterName in Pod Annotation")
+
+	patchedAnnotationBytes, err := patchPodAnnotationClusterNameMarshal(clusterName)
+	if err != nil {
+		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
+	}
+
+	_, err = Scheduler.NodeInfoCache.HostKubeClient.CoreV1().Pods(Scheduler.NewPod.Pod.Namespace).Patch(context.TODO(), Scheduler.NewPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+	if err != nil {
+		fmt.Println("patchPodAnnotation error: ", err)
+		return err
+	}
+
+	return nil
+}
+
+func (sched *GPUScheduler) getNewClusterClient(clusterName string) (*kubernetes.Clientset, error) {
+	fmt.Println("get new cluster client: ", clusterName)
+	config, err := clientcmd.BuildConfigFromFlags("https://10.0.5.66:6443", os.Getenv("KUBECONFIG"))
+	config.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	return clientset, nil
+}
+
+func (sched *GPUScheduler) createPodToAnotherCluster(qpod r.QueuedPodInfo) {
+	fmt.Println("**Create Pod To Another Cluster**")
+
+	new_clientset, err := sched.getNewClusterClient(qpod.TargetCluster)
+	if err != nil {
+		fmt.Println("failed to get new clinent set/ pod=", qpod.Pod.Name)
+		fmt.Println("err: ", err)
+		sched.SchedulingQueue.Add_BackoffQ(&qpod)
+		return
+	}
+
+	newPod := new_clientset.CoreV1().Pods(qpod.Pod.Namespace)
+	_, err = newPod.Create(context.TODO(), qpod.Pod, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Println("failed to create pod to another cluster/ pod=", qpod.Pod.Name, " /clustername=", qpod.TargetCluster)
+		fmt.Println("err: ", err)
+		sched.SchedulingQueue.Add_BackoffQ(&qpod)
+		return
+	}
+
+	fmt.Println("cluster create success - ", qpod.Pod.Name)
+	sched.deletePodFromSchedulingQueue(qpod)
+}
+
+func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
+	fmt.Println("\n2. cluster scheduling start")
+	findCluster := false
+	clusterToCreat := ""
+	for _, _ = range sched.ClusterInfoCache.ClusterInfoList {
+		clusterToCreat = "kubernetes"
+		fmt.Println("<cluster to create>: ", clusterToCreat)
+		sched.NewPod.TargetCluster = clusterToCreat
+		findCluster = true
+		err := patchPodAnnotationClusterName(clusterToCreat)
+		if err != nil {
+			sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+			fmt.Println("failed to generate patched annotations,reason: ", err)
+			return
+		}
+	}
+
+	if !findCluster {
+		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+		fmt.Println("cannot find cluster")
+		return
+	}
+
+	fmt.Println("clusterToCreate: ", clusterToCreat, "| myClusterName: ", sched.ClusterInfoCache.MyClusterName)
+
+	if clusterToCreat == sched.ClusterInfoCache.MyClusterName {
+		fmt.Println("\ntarget cluster name is my cluster!")
+		sched.nodeScheduleOne(ctx)
+	} else {
+		fmt.Println("\nntarget cluster name is not my cluster!")
+		go sched.createPodToAnotherCluster(*sched.NewPod)
+		sched.deletePodFromSchedulingQueue(sched.NewPod)
+		return
+	}
+}
+
+func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
+	fmt.Println("node scheduling { ", sched.NewPod.Pod.Name, " }")
+
+	pod := sched.NewPod.Pod
+
+	startTime := time.Now()
+
+	sched.frameworkForPod()
+
+	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod))
+
+	err := sched.UpdateCache()
+	if err != nil {
+		fmt.Println("nodeinfolist update error")
+		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+		return
+	}
+
+	sched.NodeInfoCache.DumpCache()
+
+	err = sched.schedulePod()
+	if err != nil {
+		fmt.Println("schedulePod error")
+		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+		return
+	}
+
+	sched.GetBestNodeAndGPU()
+
+	sched.NodeInfoCache.UpdatePodState(pod, r.Assumed)
+
+	elapsedTime := time.Since(startTime)
+
+	fmt.Println("#Scheduling Time : ", elapsedTime.Seconds())
+
+	go sched.Binding(ctx, *sched.NewPod, *sched.ScheduleResult)
+}
+
+func (sched *GPUScheduler) schedulePod() error {
+	if sched.NodeInfoCache.TotalNodeCount == 0 {
+		return fmt.Errorf("there is no node to schedule")
+	}
+
+	err := sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
+	if err != nil {
+		fmt.Println("Run filtering plugins error")
+		return err
+	}
+
+	err = sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
+	if err != nil {
+		fmt.Println("Run scoring plugins error")
+		return err
+	}
+
+	return nil
+}
+
+func (sched *GPUScheduler) frameworkForPod() {
+	if sched.NewPod.IsGPUPod {
+		sched.Framework = framework.GPUPodSpreadFramework()
+	} else {
+		sched.Framework = framework.NonGPUPodFramework()
+	}
+}
+
+func (sched *GPUScheduler) GetBestNodeAndGPU() {
+	fmt.Println("[STEP 4] Get Best Node/GPU")
+	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			sched.getTotalScore(nodeInfo, sched.NewPod.RequestedResource.GPUCount)
+			if sched.ScheduleResult.TotalScore < nodeInfo.PluginResult.TotalScore {
+				sched.ScheduleResult.BestNode = nodeName
+				sched.ScheduleResult.BestGPU = nodeInfo.PluginResult.BestGPU
+				sched.ScheduleResult.TotalScore = nodeInfo.PluginResult.TotalScore
+			}
+		}
+
+	}
+	fmt.Println("#Result: BestNode {", sched.ScheduleResult.BestNode, "}")
+	fmt.Println("#Result: BestGPU {", sched.ScheduleResult.BestGPU, "}")
+}
+
+func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int) {
+	score := nodeinfo.PluginResult
+	if !sched.NewPod.IsGPUPod {
+		score.TotalScore = score.NodeScore
+		return
+	}
+	sched.getTotalGPUScore(nodeinfo, requestedGPU)
+	score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
+		float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
+}
+
+func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU int) {
+	score := nodeinfo.PluginResult
+	totalGPUScore, bestGPU := float64(0), ""
+
+	type gs []*r.GPUScore
+	sortedGPUScore := make(gs, 0, len(score.GPUScores))
+	for _, d := range score.GPUScores {
+		sortedGPUScore = append(sortedGPUScore, d)
+	}
+	sort.SliceStable(sortedGPUScore, func(i, j int) bool {
+		return sortedGPUScore[i].GPUScore > sortedGPUScore[j].GPUScore
+	})
+
+	for _, a := range sortedGPUScore {
+		fmt.Println("|", a.UUID, " | ", a.GPUScore, " | ", a.IsFiltered, "|")
+	}
+
+	if requestedGPU == 1 || nodeinfo.NodeMetric.NVLinkList == nil {
+		bestGPUScore := sortedGPUScore[:requestedGPU]
+		for _, gpu := range bestGPUScore {
+			totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+			bestGPU += gpu.UUID + ","
+		}
+		score.TotalGPUScore = int(math.Round(totalGPUScore))
+		score.BestGPU = strings.Trim(bestGPU, ",")
+
+		return
+	}
+
+	sched.checkNVLinkGPU(nodeinfo)
+	gpucnt := requestedGPU
+	for gpucnt > 0 {
+		if gpucnt == 1 {
+			for _, gpu := range sortedGPUScore {
+				if !gpu.IsFiltered && !gpu.IsSelected {
+					totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+					bestGPU += gpu.UUID + ","
+					gpu.IsSelected = true
+					gpucnt--
+					break
+				}
+			}
+		} else {
+			var a1 []string
+			s1, g1, i1 := float64(0), "", -1
+			var i2 []int
+			s2, g2 := float64(0), ""
+
+			for i, nvl := range nodeinfo.NodeMetric.NVLinkList {
+				if !nvl.IsFiltered && !nvl.IsSelected {
+					s1 = float64(nvl.Score)
+					g1 += nvl.GPU1 + "," + nvl.GPU2 + ","
+					i1 = i
+					a1 = append(a1, nvl.GPU1, nvl.GPU2)
+					break
+				}
+			}
+
+			for j, gpu := range sortedGPUScore {
+				if !gpu.IsFiltered && !gpu.IsSelected {
+					s2 += float64(gpu.GPUScore)
+					g2 += gpu.UUID + ","
+					i2 = append(i2, j)
+				}
+				if len(i2) == 2 {
+					s2 /= 2
+					break
+				}
+			}
+
+			if s1 >= s2 {
+				totalGPUScore += float64(s1) * float64(2/float64(requestedGPU))
+				bestGPU += g1 + ","
+				nodeinfo.NodeMetric.NVLinkList[i1].IsSelected = true
+				for _, gpu := range sortedGPUScore {
+					if gpu.UUID == a1[0] || gpu.UUID == a1[1] {
+						gpu.IsSelected = true
+					}
+				}
+			} else {
+				totalGPUScore += float64(s2) * float64(2/float64(requestedGPU))
+				bestGPU += g2 + ","
+				sortedGPUScore[i2[0]].IsSelected = true
+				sortedGPUScore[i2[1]].IsSelected = true
+			}
+
+			gpucnt -= 2
+		}
+	}
+
+	score.TotalGPUScore = int(math.Round(totalGPUScore))
+	score.BestGPU = strings.Trim(bestGPU, ",")
+
+}
+
+func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
+	fmt.Println("#20. Check NVLink GPU")
+
+	for _, nvl := range nodeinfo.NodeMetric.NVLinkList {
+		if nodeinfo.PluginResult.GPUScores[nvl.GPU1].IsFiltered ||
+			nodeinfo.PluginResult.GPUScores[nvl.GPU2].IsFiltered {
+			nvl.IsFiltered = true
+			continue
+		}
+		score := float64(nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore+
+			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
+		nvl.Score = int(math.Round(score * float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100)))
+		fmt.Println("%%", nvl.GPU1, "|", nvl.GPU2, "|", nvl.Score)
+	}
+}
+
+func AddAllEventHandlers(
+	sched *GPUScheduler,
+	informerFactory informers.SharedInformerFactory,
+) {
+	fmt.Println("Add All Event Handlers")
+	informerFactory.Core().V1().Pods().Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					if assignedPod(t) && sched.nodeInfoExist(t) {
+						return true
+					}
+					return false
+				case cache.DeletedFinalStateUnknown:
+					if _, ok := t.Obj.(*v1.Pod); ok {
+						return true
+					}
+					fmt.Errorf("unable to convert object %T to *v1.Pod in %T", obj, sched)
+					return false
+				default:
+					fmt.Errorf("unable to handle object in %T: %T", sched, obj)
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sched.addPodToCache,
+				UpdateFunc: sched.updatePodInCache,
+				DeleteFunc: sched.deletePodFromCache,
+			},
+		},
+	)
+
+	informerFactory.Core().V1().Pods().Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					return !assignedPod(t) && responsibleForPod(t)
+				case cache.DeletedFinalStateUnknown:
+					return false
+				default:
+					fmt.Errorf("unable to handle object in %T: %T", sched, obj)
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sched.addPodToSchedulingQueue,
+				UpdateFunc: sched.updatePodInSchedulingQueue,
+				DeleteFunc: sched.deletePodFromSchedulingQueue,
+			},
+		},
+	)
+
+	informerFactory.Core().V1().Nodes().Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Node:
+					return !r.IsMasterNode(t)
+				case cache.DeletedFinalStateUnknown:
+					return false
+				default:
+					fmt.Errorf("unable to handle object in %T: %T", sched, obj)
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sched.addNodeToCache,
+				UpdateFunc: sched.updateNodeInCache,
+				DeleteFunc: sched.deleteNodeFromCache,
+			},
+		},
+	)
+}
+
+func (sched *GPUScheduler) nodeInfoExist(pod *v1.Pod) bool {
+	if _, ok := sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName]; ok {
+		return true
+	}
+	return false
+}
+
+func (sched *GPUScheduler) addNodeToCache(obj interface{}) {
+	fmt.Println("addNodeToCache")
+	node, ok := obj.(v1.Node)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *v1.Node", "obj", obj)
+		return
+	}
+
+	err := sched.NodeInfoCache.AddNode(node)
+	if err != nil {
+		klog.ErrorS(nil, "Cannot Add Node [", node.Name, "]")
+	}
+
+	sched.SchedulingQueue.FlushBackoffQCompleted()
+}
+
+func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
+	fmt.Println("updateNodeInCache")
+	oldNode, ok := oldObj.(*v1.Node)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert oldObj to *v1.Node", "oldObj", oldObj)
+		return
+	}
+
+	newNode, ok := newObj.(*v1.Node)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert newObj to *v1.Node", "newObj", newObj)
+		return
+	}
+
+	err := sched.NodeInfoCache.UpdateNode(oldNode, newNode)
+	if err != nil {
+		klog.ErrorS(nil, "Cannot Update Node [", newNode.Name, "]")
+	}
+
+	if event := nodeSchedulingPropertiesChange(newNode, oldNode); event != nil {
+		sched.SchedulingQueue.FlushBackoffQCompleted()
+	}
+}
+
+func (sched *GPUScheduler) deleteNodeFromCache(obj interface{}) {
+	fmt.Println("deleteNodeFromCache")
+	var node *v1.Node
+	switch t := obj.(type) {
+	case *v1.Node:
+		node = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		node, ok = t.Obj.(*v1.Node)
+		if !ok {
+			klog.ErrorS(nil, "Cannot convert to *v1.Node", "obj", t.Obj)
+			return
+		}
+	default:
+		klog.ErrorS(nil, "Cannot convert to *v1.Node", "obj", t)
+		return
+	}
+	klog.V(3).InfoS("Delete event for node", "node", klog.KObj(node))
+	if err := sched.NodeInfoCache.RemoveNode(node); err != nil {
+		klog.ErrorS(err, "Scheduler cache RemoveNode failed")
+	}
+}
+
+func (sched *GPUScheduler) addPodToSchedulingQueue(obj interface{}) {
+	pod := obj.(*v1.Pod)
+	fmt.Println("sched.addPodToScheduligQueue: ", pod.Name)
+	klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(pod))
+	if err := sched.SchedulingQueue.Add_AvtiveQ(pod); err != nil {
+		fmt.Errorf("unable to queue %T: %v", obj, err)
+	} else {
+		sched.NodeInfoCache.AddPodState(*pod, r.Pending)
+	}
+}
+
+func (sched *GPUScheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}) {
+
+	oldPod, newPod := oldObj.(*v1.Pod), newObj.(*v1.Pod)
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		return
+	}
+
+	if ok, state := sched.NodeInfoCache.CheckPodStateExist(newPod); ok {
+		if state != r.Pending {
+			return
+		}
+	}
+
+	if err := sched.SchedulingQueue.Update(oldPod, newPod); err != nil {
+		fmt.Errorf("unable to update %T: %v", newObj, err)
+	}
+}
+
+func (sched *GPUScheduler) deletePodFromSchedulingQueue(obj interface{}) {
+	var pod *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		pod = obj.(*v1.Pod)
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pod, ok = t.Obj.(*v1.Pod)
+		if !ok {
+			fmt.Errorf("unable to convert object %T to *v1.Pod in %T", obj, sched)
+			return
+		}
+	default:
+		fmt.Errorf("unable to handle object in %T: %T", sched, obj)
+		return
+	}
+
+	if ok, state := sched.NodeInfoCache.CheckPodStateExist(pod); ok {
+		if state != r.Pending {
+			return
+		}
+	}
+
+	klog.V(3).InfoS("Delete event for unscheduled pod", "pod", klog.KObj(pod))
+	if err := sched.SchedulingQueue.Delete(pod); err != nil {
+		fmt.Errorf("unable to dequeue %T: %v", obj, err)
+	}
+}
+
+func (sched *GPUScheduler) addPodToCache(obj interface{}) {
+	pod, _ := obj.(*v1.Pod)
+
+	if ok, state := sched.NodeInfoCache.CheckPodStateExist(pod); ok {
+		if state == r.BindingFinished {
+			return
+
+		} else if state == r.Pending {
+			pod := obj.(*v1.Pod)
+			fmt.Println("<error> Pod {", pod.Name, "} State is Pending")
+
+		} else {
+			sched.NodeInfoCache.AddPod(pod)
+			sched.NodeInfoCache.UpdatePodState(pod, r.BindingFinished)
+		}
+
+	} else {
+		fmt.Println("# Pod {", pod.Name, "} NonExist")
+		sched.NodeInfoCache.AddPod(pod)
+		sched.NodeInfoCache.AddPodState(*pod, r.BindingFinished)
+
+		if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
+			fmt.Println("add node {", pod.Spec.NodeName, "} gpu metric collector")
+			sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].GRPCHost = pod.Status.PodIP
+		}
+	}
+}
+
+func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
+	oldPod, ok := oldObj.(*v1.Pod)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert oldObj to *v1.Pod", "oldObj", oldObj)
+		return
+	}
+	newPod, ok := newObj.(*v1.Pod)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert newObj to *v1.Pod", "newObj", newObj)
+		return
+	}
+	klog.V(4).InfoS("Update event for scheduled pod", "pod", klog.KObj(oldPod))
+
+	if err := sched.NodeInfoCache.UpdatePod(oldPod, newPod); err != nil {
+		klog.ErrorS(err, "Scheduler cache UpdatePod failed", "pod", klog.KObj(oldPod))
+	}
+
+}
+
+func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
+	var pod *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		pod = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pod, ok = t.Obj.(*v1.Pod)
+		if !ok {
+			klog.ErrorS(nil, "Cannot convert to *v1.Pod", "obj", t.Obj)
+			return
+		}
+	default:
+		klog.ErrorS(nil, "Cannot convert to *v1.Pod", "obj", t)
+		return
+	}
+
+	if ok, _ := sched.NodeInfoCache.CheckPodStateExist(pod); !ok {
+		fmt.Println("cannot delete. there isn't pod {", pod.Name, "} state")
+		return
+	}
+
+	if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
+		fmt.Println("remove node {", pod.Spec.NodeName, "} gpu metric collector")
+		sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].GRPCHost = ""
+	}
+
+	klog.V(3).InfoS("Delete event for scheduled pod", "pod", klog.KObj(pod))
+	if err := sched.NodeInfoCache.RemovePod(pod); err != nil {
+		klog.ErrorS(err, "Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
+	}
+
+}
+
+func assignedPod(pod *v1.Pod) bool {
+	return len(pod.Spec.NodeName) != 0
+}
+
+func responsibleForPod(pod *v1.Pod) bool {
+	responsibleForPod := (pod.Spec.SchedulerName == "gpu-scheduler")
+	fmt.Println("responsibleForPod- ", pod.Spec.SchedulerName)
+	return responsibleForPod
+}
+
+func nodeSchedulingPropertiesChange(newNode *v1.Node, oldNode *v1.Node) *r.ClusterEvent {
+	if nodeSpecUnschedulableChanged(newNode, oldNode) {
+		return &NodeSpecUnschedulableChange
+	}
+	if nodeAllocatableChanged(newNode, oldNode) {
+		return &NodeAllocatableChange
+	}
+	if nodeLabelsChanged(newNode, oldNode) {
+		return &NodeLabelChange
+	}
+	if nodeTaintsChanged(newNode, oldNode) {
+		return &NodeTaintChange
+	}
+	if nodeConditionsChanged(newNode, oldNode) {
+		return &NodeConditionChange
+	}
+
+	return nil
+}
+
+func nodeAllocatableChanged(newNode *v1.Node, oldNode *v1.Node) bool {
+	return !reflect.DeepEqual(oldNode.Status.Allocatable, newNode.Status.Allocatable)
+}
+
+func nodeLabelsChanged(newNode *v1.Node, oldNode *v1.Node) bool {
+	return !reflect.DeepEqual(oldNode.GetLabels(), newNode.GetLabels())
+}
+
+func nodeTaintsChanged(newNode *v1.Node, oldNode *v1.Node) bool {
+	return !reflect.DeepEqual(newNode.Spec.Taints, oldNode.Spec.Taints)
+}
+
+func nodeConditionsChanged(newNode *v1.Node, oldNode *v1.Node) bool {
+	strip := func(conditions []v1.NodeCondition) map[v1.NodeConditionType]v1.ConditionStatus {
+		conditionStatuses := make(map[v1.NodeConditionType]v1.ConditionStatus, len(conditions))
+		for i := range conditions {
+			conditionStatuses[conditions[i].Type] = conditions[i].Status
+		}
+		return conditionStatuses
+	}
+	return !reflect.DeepEqual(strip(oldNode.Status.Conditions), strip(newNode.Status.Conditions))
+}
+
+func nodeSpecUnschedulableChanged(newNode *v1.Node, oldNode *v1.Node) bool {
+	return newNode.Spec.Unschedulable != oldNode.Spec.Unschedulable && !newNode.Spec.Unschedulable
+}
+
+const (
+	PodAdd                 = "PodAdd"
+	ScheduleAttemptFailure = "ScheduleAttemptFailure"
+	BackoffComplete        = "BackoffComplete"
+	ForceActivate          = "ForceActivate"
+)
+
+var (
+	AssignedPodAdd              = r.ClusterEvent{Resource: r.Pod, ActionType: r.Add, Label: "AssignedPodAdd"}
+	NodeAdd                     = r.ClusterEvent{Resource: r.Node, ActionType: r.Add, Label: "NodeAdd"}
+	AssignedPodUpdate           = r.ClusterEvent{Resource: r.Pod, ActionType: r.Update, Label: "AssignedPodUpdate"}
+	AssignedPodDelete           = r.ClusterEvent{Resource: r.Pod, ActionType: r.Delete, Label: "AssignedPodDelete"}
+	NodeSpecUnschedulableChange = r.ClusterEvent{Resource: r.Node, ActionType: r.UpdateNodeTaint, Label: "NodeSpecUnschedulableChange"}
+	NodeAllocatableChange       = r.ClusterEvent{Resource: r.Node, ActionType: r.UpdateNodeAllocatable, Label: "NodeAllocatableChange"}
+	NodeLabelChange             = r.ClusterEvent{Resource: r.Node, ActionType: r.UpdateNodeLabel, Label: "NodeLabelChange"}
+	NodeTaintChange             = r.ClusterEvent{Resource: r.Node, ActionType: r.UpdateNodeTaint, Label: "NodeTaintChange"}
+	NodeConditionChange         = r.ClusterEvent{Resource: r.Node, ActionType: r.UpdateNodeCondition, Label: "NodeConditionChange"}
+	PvAdd                       = r.ClusterEvent{Resource: r.PersistentVolume, ActionType: r.Add, Label: "PvAdd"}
+	PvUpdate                    = r.ClusterEvent{Resource: r.PersistentVolume, ActionType: r.Update, Label: "PvUpdate"}
+	PvcAdd                      = r.ClusterEvent{Resource: r.PersistentVolumeClaim, ActionType: r.Add, Label: "PvcAdd"}
+	PvcUpdate                   = r.ClusterEvent{Resource: r.PersistentVolumeClaim, ActionType: r.Update, Label: "PvcUpdate"}
+	StorageClassAdd             = r.ClusterEvent{Resource: r.StorageClass, ActionType: r.Add, Label: "StorageClassAdd"}
+	StorageClassUpdate          = r.ClusterEvent{Resource: r.StorageClass, ActionType: r.Update, Label: "StorageClassUpdate"}
+	CSINodeAdd                  = r.ClusterEvent{Resource: r.CSINode, ActionType: r.Add, Label: "CSINodeAdd"}
+	CSINodeUpdate               = r.ClusterEvent{Resource: r.CSINode, ActionType: r.Update, Label: "CSINodeUpdate"}
+	CSIDriverAdd                = r.ClusterEvent{Resource: r.CSIDriver, ActionType: r.Add, Label: "CSIDriverAdd"}
+	CSIDriverUpdate             = r.ClusterEvent{Resource: r.CSIDriver, ActionType: r.Update, Label: "CSIDriverUpdate"}
+	CSIStorageCapacityAdd       = r.ClusterEvent{Resource: r.CSIStorageCapacity, ActionType: r.Add, Label: "CSIStorageCapacityAdd"}
+	CSIStorageCapacityUpdate    = r.ClusterEvent{Resource: r.CSIStorageCapacity, ActionType: r.Update, Label: "CSIStorageCapacityUpdate"}
+	ServiceAdd                  = r.ClusterEvent{Resource: r.Service, ActionType: r.Add, Label: "ServiceAdd"}
+	ServiceUpdate               = r.ClusterEvent{Resource: r.Service, ActionType: r.Update, Label: "ServiceUpdate"}
+	ServiceDelete               = r.ClusterEvent{Resource: r.Service, ActionType: r.Delete, Label: "ServiceDelete"}
+	WildCardEvent               = r.ClusterEvent{Resource: r.WildCard, ActionType: r.All, Label: "WildCardEvent"}
+	UnschedulableTimeout        = r.ClusterEvent{Resource: r.WildCard, ActionType: r.All, Label: "UnschedulableTimeout"}
+)
+
+func patchPodAnnotationUUID(bestGPU string) ([]byte, error) {
+	patchAnnotations := map[string]interface{}{
+		"metadata": map[string]map[string]string{"annotations": {
+			"UUID": bestGPU,
+		}}}
+
+	return json.Marshal(patchAnnotations)
+}
+
+func patchPodAnnotation(bestGPU string) error {
+	fmt.Println("[step 5-1] Write GPU UUID in Pod Annotation")
+
+	patchedAnnotationBytes, err := patchPodAnnotationUUID(bestGPU)
+	if err != nil {
+		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
+	}
+
+	_, err = Scheduler.NodeInfoCache.HostKubeClient.CoreV1().Pods(Scheduler.NewPod.Pod.Namespace).Patch(context.TODO(), Scheduler.NewPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
+	if err != nil {
+		fmt.Println("patchPodAnnotation error: ", err)
+		return err
+	}
+
+	return nil
+}
+
+func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, result r.ScheduleResult) {
+	_, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	fmt.Println("[STEP 5] Binding {", newpod.Pod.Name, "}")
+
+	if newpod.IsGPUPod {
+		err := patchPodAnnotation(result.BestGPU)
+		if err != nil {
+			sched.SchedulingQueue.Add_BackoffQ(&newpod)
+			fmt.Println("failed to generate patched annotations,reason: ", err)
+			return
+		}
+	}
+
+	fmt.Println("--------------------------------------------------------------------------------------------------------------------------")
+
+	binding := &corev1.Binding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: newpod.Pod.Name,
+		},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Binding",
+		},
+		Target: corev1.ObjectReference{
+			APIVersion: "v1",
+			Kind:       "Node",
+			Name:       result.BestNode,
+		},
+	}
+
+	err := sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	if err != nil {
+		sched.SchedulingQueue.Add_BackoffQ(&newpod)
+		fmt.Println("+++++binding error: ", err, "+++++")
+		return
+	}
+	fmt.Println("+++++", time.Now().Format("2006-01-02 15:04:05"), "Successfully assigned", newpod.Pod.Name, "+++++")
+}
+
+type ClusterCache struct {
+	mu              sync.RWMutex
+	MyClusterName   string
+	ClusterInfoList map[string]*ClusterInfo
+	TotalNodeCount  int
+}
+
+func NewClusterCache() *ClusterCache {
+	totalNodeCount := 0
+	clusterInfoList, myClusterName := NewClusterInfo()
+	for _, ci := range clusterInfoList {
+		totalNodeCount += ci.NodeCount
+	}
+
+	return &ClusterCache{
+		MyClusterName:   myClusterName,
+		ClusterInfoList: clusterInfoList,
+		TotalNodeCount:  totalNodeCount,
+	}
+}
+
+type ClusterInfo struct {
+	ClusterName string
+	NodeCount   int
+}
+
+func NewClusterInfo() (map[string]*ClusterInfo, string) {
+	var (
+		myClusterName string
+		cluster0      string
+		cluster1      string
+	)
+
+	clusterInfoList := make(map[string]*ClusterInfo)
+
+	myClusterName_, err := exec.Command("cat", "/gpu-scheduler-clusterinfo/my-cluster-name").Output()
+	if err == nil {
+		myClusterName = string(myClusterName_)
+		fmt.Println("myclustername: ", myClusterName)
+	}
+
+	cluster0_, err := exec.Command("cat", "/gpu-scheduler-clusterinfo/cluster0").Output()
+	if err == nil {
+		cluster0 = string(cluster0_)
+		fmt.Println("cluster0_: gpu1")
+	}
+
+	cluster1_, err := exec.Command("cat", "/gpu-scheduler-clusterinfo/cluster1").Output()
+	if err == nil {
+		cluster1 = string(cluster1_)
+		fmt.Println("cluster1_: kubernetes")
+	}
+
+	if cluster0 != myClusterName {
+		ci0 := &ClusterInfo{
+			ClusterName: cluster0,
+			NodeCount:   1,
+		}
+		clusterInfoList[cluster0] = ci0
+	}
+
+	if cluster1 != myClusterName {
+		ci1 := &ClusterInfo{
+			ClusterName: cluster1,
+			NodeCount:   1,
+		}
+		clusterInfoList[cluster1] = ci1
+	}
+
+	return clusterInfoList, myClusterName
+}
+
+var (
+	cleanAssumedPeriod         = 1 * time.Second
+	durationToExpireAssumedPod = 15 * time.Minute
+)
+
+const (
+	Pending         = "Pending"
+	Assumed         = "Assumed"
+	BindingFinished = "BindingFinished"
+)
+
+type NodeCache struct {
+	period                 time.Duration
+	mu                     sync.RWMutex
+	PodStates              map[string]*PodState
+	NodeInfoList           map[string]*NodeInfo
+	ImageStates            map[string]*imageState
+	GPUMemoryMostInCluster int64
+	TotalNodeCount         int
+	AvailableNodeCount     int
+	HostKubeClient         *kubernetes.Clientset
+}
+
+func NewNodeInfoCache(hostKubeClient *kubernetes.Clientset) *NodeCache {
+	return &NodeCache{
+		period:                 cleanAssumedPeriod,
+		PodStates:              make(map[string]*PodState),
+		NodeInfoList:           make(map[string]*NodeInfo),
+		ImageStates:            make(map[string]*imageState),
+		GPUMemoryMostInCluster: 0,
+		TotalNodeCount:         0,
+		AvailableNodeCount:     0,
+		HostKubeClient:         hostKubeClient,
+	}
+}
+
+func (c *NodeCache) InitNodeInfoCache() {
+	nodes, _ := c.HostKubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+
+	for _, node := range nodes.Items {
+		if !IsMasterNode(&node) {
+			fmt.Println("[node name]: ", node.Name)
+			c.AddNode(node)
+		}
+	}
+
+}
+
+const (
+	control_plane = "node-role.kubernetes.io/control-plane"
+	master        = "node-role.kubernetes.io/master"
+)
+
+func IsMasterNode(node *corev1.Node) bool {
+	if _, ok := node.Labels[control_plane]; ok {
+		return true
+	} else if _, ok := node.Labels[master]; ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (c *NodeCache) DumpCache() error {
+	fmt.Println("[Dump Node Info Cache]")
+
+	fmt.Println("(0) available node count: ", c.AvailableNodeCount)
+	for nodeName, nodeInfo := range c.NodeInfoList {
+		fmt.Println("===Node List===")
+		fmt.Println("(1) node name {", nodeName, "}")
+
+		fmt.Println("(2) pods: ")
+		a := 1
+		for _, pod := range nodeInfo.Pods {
+			fmt.Println("- ", a, ":", pod.Pod.Name)
+			a++
+		}
+
+		fmt.Print("(3) num of image: ", len(nodeInfo.ImageStates), "\n")
+
+		fmt.Println("(4) gpu name: ")
+		for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
+			fmt.Println("- ", i, ":", uuid)
+		}
+
+		fmt.Println("(5) total gpu count: ", nodeInfo.NodeMetric.TotalGPUCount)
+
+		fmt.Print("(6) used ports: ")
+		for port, _ := range nodeInfo.UsedPorts {
+			fmt.Print(port, ", ")
+		}
+		fmt.Println()
+
+		fmt.Println("(7) nvlink list: ")
+		for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
+			fmt.Println("-", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Lane)
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+func (c *NodeCache) NodeCountDown() {
+	c.AvailableNodeCount--
+}
+
+type PodState struct {
+	Pod      *corev1.Pod
+	deadline *time.Time
+	State    string
+}
+
+type imageState struct {
+	size  int64
+	nodes sets.String
+}
+
+func (cache *NodeCache) createImageStateSummary(state *imageState) *ImageStateSummary {
+	return &ImageStateSummary{
+		Size:     state.size,
+		NumNodes: len(state.nodes),
+	}
+}
+
+func (cache *NodeCache) removeNodeInfoFromList(name string) {
+	delete(cache.NodeInfoList, name)
+}
+
+func (cache *NodeCache) removePodStates(node *corev1.Node) {
+	n, ok := cache.NodeInfoList[node.Name]
+	if !ok {
+		return
+	}
+
+	for _, pod := range n.Pods {
+		key, err := GetPodKey(pod.Pod)
+		if err != nil {
+			return
+		}
+		delete(cache.PodStates, key)
+	}
+}
+
+func (cache *NodeCache) AddPodState(pod corev1.Pod, s string) error {
+	key, err := GetPodKey(&pod)
+	if err != nil {
+		return err
+	}
+	ps := &PodState{
+		Pod:      &pod,
+		deadline: nil,
+		State:    s,
+	}
+	cache.PodStates[key] = ps
+
+	return nil
+}
+
+func (cache *NodeCache) UpdatePodState(pod *corev1.Pod, s string) error {
+	key, err := GetPodKey(pod)
+	if err != nil {
+		return err
+	}
+
+	cache.PodStates[key].State = s
+	return nil
+}
+
+func (cache *NodeCache) CheckPodStateExist(pod *corev1.Pod) (bool, string) {
+	key, err := GetPodKey(pod)
+	if err != nil {
+		return false, ""
+	}
+	if podState, ok := cache.PodStates[key]; ok {
+		return true, podState.State
+	}
+	return false, ""
+}
+
+func (cache *NodeCache) addPod(pod *corev1.Pod, status string) error {
+
+	n, ok := cache.NodeInfoList[pod.Spec.NodeName]
+	if ok {
+		n.AddPod(*pod)
+		cache.AddPodState(*pod, BindingFinished)
+	}
+
+	return nil
+}
+
+func (cache *NodeCache) updatePod(oldPod, newPod *corev1.Pod) error {
+
+	ok, oldState := cache.CheckPodStateExist(oldPod)
+	if !ok {
+		cache.AddPodState(*oldPod, Pending)
+	}
+
+	if err := cache.removePod(oldPod); err != nil {
+		return err
+	}
+
+	return cache.addPod(newPod, oldState)
+}
+
+func (cache *NodeCache) removePod(pod *corev1.Pod) error {
+	key, err := GetPodKey(pod)
+	if err != nil {
+		return err
+	}
+
+	n, ok := cache.NodeInfoList[pod.Spec.NodeName]
+	if !ok {
+		klog.ErrorS(nil, "Node not found when trying to remove pod", "node", klog.KRef("", pod.Spec.NodeName), "pod", klog.KObj(pod))
+	} else {
+		if err := n.RemovePod(pod); err != nil {
+			return err
+		}
+		if len(n.Pods) == 0 && n.node == nil {
+			cache.removeNodeInfoFromList(pod.Spec.NodeName)
+		}
+	}
+
+	delete(cache.PodStates, key)
+	return nil
+}
+
+func (cache *NodeCache) AddPod(pod *corev1.Pod) error {
+	fmt.Println("cache.AddPod: ", pod.Name)
+	key, err := GetPodKey(pod)
+	if err != nil {
+		return err
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	_, ok := cache.PodStates[key]
+	switch {
+	case ok:
+		fmt.Println("already exist status")
+	case !ok:
+		if err = cache.addPod(pod, BindingFinished); err != nil {
+			klog.ErrorS(err, "Error occurred while adding pod")
+		}
+	default:
+		return fmt.Errorf("pod %v was already in added state", key)
+	}
+
+	return nil
+}
+
+func (cache *NodeCache) UpdatePod(oldPod, newPod *corev1.Pod) error {
+	fmt.Println("cache.UpdatePod: ", oldPod.Name)
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	return cache.updatePod(oldPod, newPod)
+}
+
+func (cache *NodeCache) RemovePod(pod *corev1.Pod) error {
+	fmt.Println("cache.RemovePod: ", pod.Name)
+	key, err := GetPodKey(pod)
+	if err != nil {
+		return err
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	currState, ok := cache.PodStates[key]
+	if !ok {
+		return fmt.Errorf("pod %v is not found in scheduler cache, so cannot be removed from it", key)
+	}
+	if currState.Pod.Spec.NodeName != pod.Spec.NodeName {
+		klog.ErrorS(nil, "Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.Pod.Spec.NodeName))
+		if pod.Spec.NodeName != "" {
+			klog.ErrorS(nil, "scheduler cache is corrupted and can badly affect scheduling decisions")
+			os.Exit(1)
+		}
+	}
+	return cache.removePod(currState.Pod)
+}
+
+func (cache *NodeCache) AddNode(node corev1.Node) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	n, ok := cache.NodeInfoList[node.Name]
+	if ok {
+		cache.RemoveNode(n.Node())
+	}
+	n = NewNodeInfo()
+	cache.NodeInfoList[node.Name] = n
+	cache.TotalNodeCount++
+
+	podsInNode, _ := cache.HostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + node.Name,
+	})
+
+	for _, pod := range podsInNode.Items {
+		fmt.Println("# pod: ", pod.Name)
+		if err := cache.addPod(&pod, BindingFinished); err != nil {
+			klog.ErrorS(err, "Error occurred while adding pod")
+		}
+	}
+
+	err := n.InitNodeInfo(&node, cache.HostKubeClient)
+	if err != nil {
+		fmt.Println("<error> cannot init node info - ", err)
+		return err
+	}
+
+	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
+	cache.DumpCache()
+	cache.addNodeImageStates(&node, n)
+	n.SetNode(&node)
+
+	return nil
+}
+
+func (cache *NodeCache) UpdateNode(oldNode, newNode *corev1.Node) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	n, ok := cache.NodeInfoList[newNode.Name]
+	if !ok {
+		n = NewNodeInfo()
+		cache.NodeInfoList[newNode.Name] = n
+	} else {
+		cache.removeNodeImageStates(n.Node())
+	}
+
+	cache.addNodeImageStates(newNode, n)
+	n.SetNode(newNode)
+
+	return nil
+}
+
+func (cache *NodeCache) RemoveNode(node *corev1.Node) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	n, ok := cache.NodeInfoList[node.Name]
+	if !ok {
+		return fmt.Errorf("node %v is not found", node.Name)
+	}
+
+	cache.removeNodeImageStates(node)
+	cache.removePodStates(node)
+	n.RemoveNode()
+	cache.removeNodeInfoFromList(node.Name)
+	cache.TotalNodeCount--
+
+	return nil
+}
+
+func (cache *NodeCache) addNodeImageStates(node *corev1.Node, nodeInfo *NodeInfo) {
+	newSum := make(map[string]*ImageStateSummary)
+
+	for _, image := range node.Status.Images {
+		for _, name := range image.Names {
+			state, ok := cache.ImageStates[name]
+			if !ok {
+				state = &imageState{
+					size:  image.SizeBytes,
+					nodes: sets.NewString(node.Name),
+				}
+				cache.ImageStates[name] = state
+			} else {
+				state.nodes.Insert(node.Name)
+			}
+			if _, ok := newSum[name]; !ok {
+				newSum[name] = cache.createImageStateSummary(state)
+			}
+		}
+	}
+	nodeInfo.ImageStates = newSum
+}
+
+func (cache *NodeCache) removeNodeImageStates(node *corev1.Node) {
+	if node == nil {
+		return
+	}
+
+	for _, image := range node.Status.Images {
+		for _, name := range image.Names {
+			state, ok := cache.ImageStates[name]
+			if ok {
+				state.nodes.Delete(node.Name)
+				if len(state.nodes) == 0 {
+					delete(cache.ImageStates, name)
+				}
+			}
+		}
+	}
+}
+
+func (nm *NodeMetric) GetNodeMetric(ip string) error {
+	host := ip + ":9000"
+	conn, err := grpc.Dial(host, grpc.WithInsecure())
+	defer conn.Close()
+	if err != nil {
+		fmt.Println("<error> get node metric1 - ", err)
+		return err
+	}
+	grpcClient := pb.NewUserClient(conn)
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
+	r, err := grpcClient.GetNode(ctx, &pb.GetNodeRequest{})
+	if err != nil {
+		cancel()
+		fmt.Println("<error> get node metric2 - ", err)
+		return err
+	}
+	result := r.GetNodeMessage()
+	cancel()
+
+	nm.MilliCPUUsed = result.NodeCpu
+	nm.MemoryUsed = result.NodeMemory
+	nm.StorageUsed = result.NodeStorage
+
+	return nil
+}
+
+func stringToArray(str string) []string {
+	str = strings.Trim(str, "[]")
+	return strings.Split(str, " ")
+}
+
+func (gm *GPUMetric) GetGPUMetric(uuid string, ip string) error {
+	host := ip + ":9000"
+	conn, err := grpc.Dial(host, grpc.WithInsecure())
+	if err != nil {
+		fmt.Println("<error> get gpu metric1 - ", err)
+		return err
+	}
+	defer conn.Close()
+	grpcClient := pb.NewUserClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	p, err := grpcClient.GetGPU(ctx, &pb.GetGPURequest{GpuUuid: uuid})
+	if err != nil {
+		cancel()
+		fmt.Println("<error> get gpu metric2 - ", err)
+		return err
+	}
+	result := p.GetGpuMessage()
+	cancel()
+
+	gm.GPUPowerUsed = result.GpuPower
+	gm.GPUMemoryFree = int64(result.GpuFree)
+	gm.GPUMemoryUsed = int64(result.GpuUsed)
+	gm.GPUTemperature = result.GpuTemp
+	gm.PodCount = result.MpsCount
+
+	return nil
+}
+
+func (ni *NodeInfo) GetInitMetric(ip string) error {
+	fmt.Println("get init metric")
+	host := ip + ":9000"
+	conn, err := grpc.Dial(host, grpc.WithInsecure())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	grpcClient := pb.NewUserClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	i, err := grpcClient.GetInitData(ctx, &pb.InitRequest{})
+	if err != nil {
+		cancel()
+		fmt.Println("<error> get init metric - ", err)
+		return err
+	}
+
+	inode := i.GetInitNode()
+	igpu := i.GetInitGPU()
+	cancel()
+
+	ni.NodeMetric.TotalGPUCount = inode.GpuCount
+	ni.NodeMetric.MilliCPUTotal = inode.NodeTotalcpu
+	ni.NodeMetric.MilliCPUUsed = inode.NodeCpu
+	ni.NodeMetric.MemoryTotal = inode.NodeTotalmemory
+	ni.NodeMetric.MemoryUsed = inode.NodeMemory
+	ni.NodeMetric.StorageTotal = inode.NodeTotalstorage
+	ni.NodeMetric.StorageUsed = inode.NodeStorage
+	ni.NodeMetric.GPU_UUID = stringToArray(inode.GpuUuid)
+	ni.NodeMetric.MaxGPUMemory = inode.MaxGpuMemory
+
+	Gpu1UuidArr1 := inode.Gpu1Index
+	Gpu2UuidArr2 := inode.Gpu2Index
+	LanecountArr3 := inode.Lanecount
+
+	for i, value := range Gpu1UuidArr1 {
+		nvl := NewNVLink(value, Gpu2UuidArr2[i], LanecountArr3[i])
+		ni.NodeMetric.NVLinkList = append(ni.NodeMetric.NVLinkList, nvl)
+	}
+
+	for i, uuid := range ni.NodeMetric.GPU_UUID {
+		gm := NewGPUMetric()
+
+		gm.GPUName = igpu[i].GpuName
+		gm.GPUIndex = igpu[i].GpuIndex
+		gm.GPUPowerUsed = igpu[i].GpuPower
+		gm.GPUPowerTotal = igpu[i].GpuTpower
+		gm.GPUMemoryTotal = int64(igpu[i].GpuTotal)
+		gm.GPUMemoryFree = int64(igpu[i].GpuFree)
+		gm.GPUMemoryUsed = int64(igpu[i].GpuUsed)
+		gm.GPUTemperature = igpu[i].GpuTemp
+		gm.PodCount = igpu[i].MpsCount
+		gm.GPUFlops = igpu[i].GpuFlops
+		gm.GPUArch = igpu[i].GpuArch
+		gm.GPUUtil = igpu[i].GpuUtil
+
+		ni.GPUMetrics[uuid] = gm
+		ni.PluginResult.GPUScores[uuid] = NewGPUScore(uuid)
+		ni.PluginResult.GPUCountUp()
+	}
+
+	return nil
+}
+
+const (
+	DefaultMilliCPURequest int64 = 100
+	DefaultMemoryRequest   int64 = 200 * 1024 * 1024
+)
+
+func GetNonzeroRequests(requests *v1.ResourceList) (int64, int64) {
+	return GetRequestForResource(v1.ResourceCPU, requests, true),
+		GetRequestForResource(v1.ResourceMemory, requests, true)
+}
+
+func GetRequestForResource(resource v1.ResourceName, requests *v1.ResourceList, nonZero bool) int64 {
+	if requests == nil {
+		return 0
+	}
+	switch resource {
+	case v1.ResourceCPU:
+		if _, found := (*requests)[v1.ResourceCPU]; !found && nonZero {
+			return DefaultMilliCPURequest
+		}
+		return requests.Cpu().MilliValue()
+	case v1.ResourceMemory:
+		if _, found := (*requests)[v1.ResourceMemory]; !found && nonZero {
+			return DefaultMemoryRequest
+		}
+		return requests.Memory().Value()
+	case v1.ResourceEphemeralStorage:
+
+		quantity, found := (*requests)[v1.ResourceEphemeralStorage]
+		if !found {
+			return 0
+		}
+		return quantity.Value()
+	default:
+		quantity, found := (*requests)[resource]
+		if !found {
+			return 0
+		}
+		return quantity.Value()
+	}
+}
+
+const (
+	Ns            = int(10)
+	Gs            = int(10)
+	SchedulerName = "gpu-scheduler"
+	Policy1       = "node-gpu-score-weight"
+	Policy2       = "pod-re-schedule-permit"
+	Policy3       = "node-reservation-permit"
+	Policy4       = "nvlink-weight-percentage"
+	Policy5       = "gpu-allocate-prefer"
+)
+
+const (
+	MaxScore int = 100
+	MinScore int = 0
+)
+
+type GVK string
+
+const (
+	Pod                   GVK = "Pod"
+	Node                  GVK = "Node"
+	PersistentVolume      GVK = "PersistentVolume"
+	PersistentVolumeClaim GVK = "PersistentVolumeClaim"
+	Service               GVK = "Service"
+	StorageClass          GVK = "storage.k8s.io/StorageClass"
+	CSINode               GVK = "storage.k8s.io/CSINode"
+	CSIDriver             GVK = "storage.k8s.io/CSIDriver"
+	CSIStorageCapacity    GVK = "storage.k8s.io/CSIStorageCapacity"
+	WildCard              GVK = "*"
+)
+
+type ClusterEvent struct {
+	Resource   GVK
+	ActionType ActionType
+	Label      string
+}
+
+func (ce ClusterEvent) IsWildCard() bool {
+	return ce.Resource == WildCard && ce.ActionType == All
+}
+
+type ScheduleResult struct {
+	BestNode   string
+	BestGPU    string
+	TotalScore int
+}
+
+func NewScheduleResult() *ScheduleResult {
+	return &ScheduleResult{
+		BestNode:   "",
+		BestGPU:    "",
+		TotalScore: -1,
+	}
+}
+
+func (sr *ScheduleResult) InitResult() {
+	sr.BestNode = ""
+	sr.BestGPU = ""
+	sr.TotalScore = -1
+}
+
+type PluginResult struct {
+	AvailableGPUCount int
+	IsFiltered        bool
+	FilteredStage     string
+	NodeScore         int
+	GPUScores         map[string]*GPUScore
+	TotalGPUScore     int
+	TotalScore        int
+	BestGPU           string
+}
+
+type GPUScore struct {
+	UUID          string
+	IsFiltered    bool
+	FilteredStage string
+	GPUScore      int
+	IsSelected    bool
+}
+
+func (pr *PluginResult) GPUCountUp() {
+	pr.AvailableGPUCount++
+}
+
+func (pr *PluginResult) GPUCountDown() {
+	pr.AvailableGPUCount--
+}
+
+func NewPluginResult() *PluginResult {
+	return &PluginResult{
+		AvailableGPUCount: 0,
+		IsFiltered:        false,
+		FilteredStage:     "",
+		NodeScore:         MinScore,
+		GPUScores:         make(map[string]*GPUScore),
+		TotalGPUScore:     MinScore,
+		TotalScore:        MinScore,
+		BestGPU:           "",
+	}
+}
+
+func (pr *PluginResult) InitPluginResult() {
+	pr.AvailableGPUCount = 0
+	pr.IsFiltered = false
+	pr.FilteredStage = ""
+	pr.NodeScore = MinScore
+	for uuid, gpuscore := range pr.GPUScores {
+		gpuscore.InitGPUScore(uuid)
+	}
+	pr.TotalGPUScore = MinScore
+	pr.TotalScore = MinScore
+	pr.BestGPU = ""
+}
+
+func NewGPUScore(uuid string) *GPUScore {
+	return &GPUScore{
+		UUID:          uuid,
+		IsFiltered:    false,
+		FilteredStage: "",
+		GPUScore:      MinScore,
+		IsSelected:    false,
+	}
+}
+
+func (gs *GPUScore) InitGPUScore(uuid string) {
+	gs.UUID = uuid
+	gs.GPUScore = MinScore
+	gs.FilteredStage = ""
+	gs.IsFiltered = false
+	gs.IsSelected = false
+}
+
+func (pr *PluginResult) FilterNode(stage string) {
+	pr.IsFiltered = true
+	pr.FilteredStage = stage
+}
+
+func (gs *GPUScore) FilterGPU(stage string) {
+	gs.IsFiltered = true
+	gs.FilteredStage = stage
+}
+
+type QueuedPodInfo struct {
+	PodUID types.UID
+	*PodInfo
+	Timestamp               time.Time
+	Attempts                int
+	InitialAttemptTimestamp time.Time
+	UnschedulablePlugins    sets.String
+	activate                bool
+	TargetCluster           string
+}
+
+func newQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
+	return &QueuedPodInfo{
+		PodUID:                  pod.UID,
+		PodInfo:                 GetNewPodInfo(pod),
+		Timestamp:               time.Now(),
+		Attempts:                0,
+		InitialAttemptTimestamp: time.Now(),
+		activate:                true,
+		TargetCluster:           "",
+	}
+}
+
+func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
+	return &QueuedPodInfo{
+		PodUID:                  qpi.PodUID,
+		PodInfo:                 qpi.PodInfo.DeepCopy(),
+		Timestamp:               qpi.Timestamp,
+		Attempts:                qpi.Attempts,
+		InitialAttemptTimestamp: qpi.InitialAttemptTimestamp,
+		activate:                qpi.activate,
+		TargetCluster:           qpi.TargetCluster,
+	}
+}
+
+func (qpi *QueuedPodInfo) Activate() {
+	qpi.Timestamp = time.Now()
+	qpi.Attempts++
+}
+
+type PodInfo struct {
+	Pod                        *corev1.Pod
+	RequiredAffinityTerms      []AffinityTerm
+	RequiredAntiAffinityTerms  []AffinityTerm
+	PreferredAffinityTerms     []WeightedAffinityTerm
+	PreferredAntiAffinityTerms []WeightedAffinityTerm
+	ParseError                 error
+	RequestedResource          *PodResource
+	IsGPUPod                   bool
+	ReserveNode                string
+}
+
+func newPodInfo() *PodInfo {
+	return &PodInfo{
+		Pod:                        nil,
+		RequiredAffinityTerms:      nil,
+		RequiredAntiAffinityTerms:  nil,
+		PreferredAffinityTerms:     nil,
+		PreferredAntiAffinityTerms: nil,
+		ParseError:                 nil,
+		RequestedResource:          nil,
+		IsGPUPod:                   true,
+		ReserveNode:                "",
+	}
+}
+
+func GetNewPodInfo(pod *corev1.Pod) *PodInfo {
+	podinfo := newPodInfo()
+	podinfo.Update(pod)
+	return podinfo
+}
+
+func (pi *PodInfo) DeepCopy() *PodInfo {
+	return &PodInfo{
+		Pod:                        pi.Pod.DeepCopy(),
+		RequiredAffinityTerms:      pi.RequiredAffinityTerms,
+		RequiredAntiAffinityTerms:  pi.RequiredAntiAffinityTerms,
+		PreferredAffinityTerms:     pi.PreferredAffinityTerms,
+		PreferredAntiAffinityTerms: pi.PreferredAntiAffinityTerms,
+		ParseError:                 pi.ParseError,
+		RequestedResource:          pi.RequestedResource,
+	}
+}
+
+func (pi *PodInfo) Update(pod *corev1.Pod) {
+	if pod != nil && pi.Pod != nil && pi.Pod.UID == pod.UID {
+		pi.Pod = pod
+		return
+	}
+	var preferredAffinityTerms []corev1.WeightedPodAffinityTerm
+	var preferredAntiAffinityTerms []corev1.WeightedPodAffinityTerm
+	if affinity := pod.Spec.Affinity; affinity != nil {
+		if a := affinity.PodAffinity; a != nil {
+			preferredAffinityTerms = a.PreferredDuringSchedulingIgnoredDuringExecution
+		}
+		if a := affinity.PodAntiAffinity; a != nil {
+			preferredAntiAffinityTerms = a.PreferredDuringSchedulingIgnoredDuringExecution
+		}
+	}
+
+	var parseErrs []error
+	requiredAffinityTerms, err := getAffinityTerms(pod, getPodAffinityTerms(pod.Spec.Affinity))
+	if err != nil {
+		parseErrs = append(parseErrs, fmt.Errorf("requiredAffinityTerms: %w", err))
+	}
+	requiredAntiAffinityTerms, err := getAffinityTerms(pod,
+		getPodAntiAffinityTerms(pod.Spec.Affinity))
+	if err != nil {
+		parseErrs = append(parseErrs, fmt.Errorf("requiredAntiAffinityTerms: %w", err))
+	}
+	weightedAffinityTerms, err := getWeightedAffinityTerms(pod, preferredAffinityTerms)
+	if err != nil {
+		parseErrs = append(parseErrs, fmt.Errorf("preferredAffinityTerms: %w", err))
+	}
+	weightedAntiAffinityTerms, err := getWeightedAffinityTerms(pod, preferredAntiAffinityTerms)
+	if err != nil {
+		parseErrs = append(parseErrs, fmt.Errorf("preferredAntiAffinityTerms: %w", err))
+	}
+
+	requestedResource, isGPUPod := calculatePodResource(pod)
+
+	pi.Pod = pod
+	pi.RequiredAffinityTerms = requiredAffinityTerms
+	pi.RequiredAntiAffinityTerms = requiredAntiAffinityTerms
+	pi.PreferredAffinityTerms = weightedAffinityTerms
+	pi.PreferredAntiAffinityTerms = weightedAntiAffinityTerms
+	pi.ParseError = utilerrors.NewAggregate(parseErrs)
+	pi.RequestedResource = requestedResource
+	pi.IsGPUPod = isGPUPod
+}
+
+func getMemory(memory string) int64 {
+	if memory == "" {
+		return 0
+	} else {
+		rQuant := resource.MustParse(memory)
+		return int64(rQuant.Value())
+	}
+}
+
+type AffinityTerm struct {
+	Namespaces        sets.String
+	Selector          labels.Selector
+	TopologyKey       string
+	NamespaceSelector labels.Selector
+}
+
+func (at *AffinityTerm) Matches(pod *corev1.Pod, nsLabels labels.Set) bool {
+	if at.Namespaces.Has(pod.Namespace) || at.NamespaceSelector.Matches(nsLabels) {
+		return at.Selector.Matches(labels.Set(pod.Labels))
+	}
+	return false
+}
+
+type WeightedAffinityTerm struct {
+	AffinityTerm
+	Weight int32
+}
+
+type Diagnosis struct {
+	NodeToStatusMap      NodeToStatusMap
+	UnschedulablePlugins sets.String
+	PostFilterMsg        string
+}
+
+type FitError struct {
+	Pod         *corev1.Pod
+	NumAllNodes int
+	Diagnosis   Diagnosis
+}
+
+const (
+	NoNodeAvailableMsg = "0/%v nodes are available"
+)
+
+func (f *FitError) Error() string {
+	reasons := make(map[string]int)
+	for _, status := range f.Diagnosis.NodeToStatusMap {
+		for _, reason := range status.Reasons() {
+			reasons[reason]++
+		}
+	}
+
+	sortReasonsHistogram := func() []string {
+		var reasonStrings []string
+		for k, v := range reasons {
+			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
+		}
+		sort.Strings(reasonStrings)
+		return reasonStrings
+	}
+	reasonMsg := fmt.Sprintf(NoNodeAvailableMsg+": %v.", f.NumAllNodes, strings.Join(sortReasonsHistogram(), ", "))
+	postFilterMsg := f.Diagnosis.PostFilterMsg
+	if postFilterMsg != "" {
+		reasonMsg += " " + postFilterMsg
+	}
+	return reasonMsg
+}
+
+func newAffinityTerm(pod *corev1.Pod, term *corev1.PodAffinityTerm) (*AffinityTerm, error) {
+	selector, err := metav1.LabelSelectorAsSelector(term.LabelSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	namespaces := getNamespacesFromPodAffinityTerm(pod, term)
+	nsSelector, err := metav1.LabelSelectorAsSelector(term.NamespaceSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AffinityTerm{Namespaces: namespaces, Selector: selector, TopologyKey: term.TopologyKey, NamespaceSelector: nsSelector}, nil
+}
+
+func getAffinityTerms(pod *corev1.Pod, v1Terms []corev1.PodAffinityTerm) ([]AffinityTerm, error) {
+	if v1Terms == nil {
+		return nil, nil
+	}
+
+	var terms []AffinityTerm
+	for i := range v1Terms {
+		t, err := newAffinityTerm(pod, &v1Terms[i])
+		if err != nil {
+			return nil, err
+		}
+		terms = append(terms, *t)
+	}
+	return terms, nil
+}
+
+func getWeightedAffinityTerms(pod *corev1.Pod, v1Terms []corev1.WeightedPodAffinityTerm) ([]WeightedAffinityTerm, error) {
+	if v1Terms == nil {
+		return nil, nil
+	}
+
+	var terms []WeightedAffinityTerm
+	for i := range v1Terms {
+		t, err := newAffinityTerm(pod, &v1Terms[i].PodAffinityTerm)
+		if err != nil {
+			return nil, err
+		}
+		terms = append(terms, WeightedAffinityTerm{AffinityTerm: *t, Weight: v1Terms[i].Weight})
+	}
+	return terms, nil
+}
+
+func NewPodInfo(pod *corev1.Pod) *PodInfo {
+	pInfo := &PodInfo{}
+	pInfo.Update(pod)
+	return pInfo
+}
+
+func getPodAffinityTerms(affinity *corev1.Affinity) (terms []corev1.PodAffinityTerm) {
+	if affinity != nil && affinity.PodAffinity != nil {
+		if len(affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0 {
+			terms = affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+		}
+	}
+	return terms
+}
+
+func getPodAntiAffinityTerms(affinity *corev1.Affinity) (terms []corev1.PodAffinityTerm) {
+	if affinity != nil && affinity.PodAntiAffinity != nil {
+		if len(affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0 {
+			terms = affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+		}
+	}
+	return terms
+}
+
+func getNamespacesFromPodAffinityTerm(pod *corev1.Pod, podAffinityTerm *corev1.PodAffinityTerm) sets.String {
+	names := sets.String{}
+	if len(podAffinityTerm.Namespaces) == 0 && podAffinityTerm.NamespaceSelector == nil {
+		names.Insert(pod.Namespace)
+	} else {
+		names.Insert(podAffinityTerm.Namespaces...)
+	}
+	return names
+}
+
+type ImageStateSummary struct {
+	Size     int64
+	NumNodes int
+}
+
+type NodeInfo struct {
+	node                         *corev1.Node
+	Pods                         []*PodInfo
+	PodsWithAffinity             []*PodInfo
+	PodsWithRequiredAntiAffinity []*PodInfo
+	UsedPorts                    HostPortInfo
+	ImageStates                  map[string]*ImageStateSummary
+	PVCRefCounts                 map[string]int
+	GRPCHost                     string
+	NodeMetric                   *NodeMetric
+	GPUMetrics                   map[string]*GPUMetric
+	IsGPUNode                    bool
+	TotalGPUCount                int64
+	PluginResult                 *PluginResult
+	Requested                    *Resource
+	Allocatable                  *Resource
+	ReservePodList               sets.String
+}
+
+func (n *NodeInfo) Node() *corev1.Node {
+	if n == nil {
+		return nil
+	}
+	return n.node
+}
+
+func NewNodeInfo() *NodeInfo {
+	return &NodeInfo{
+		node:                         nil,
+		Pods:                         nil,
+		PodsWithAffinity:             nil,
+		PodsWithRequiredAntiAffinity: nil,
+		UsedPorts:                    make(HostPortInfo),
+		ImageStates:                  make(map[string]*ImageStateSummary),
+		PVCRefCounts:                 make(map[string]int),
+		GRPCHost:                     "",
+		NodeMetric:                   NewNodeMetric(),
+		GPUMetrics:                   make(map[string]*GPUMetric),
+		IsGPUNode:                    true,
+		TotalGPUCount:                0,
+		PluginResult:                 NewPluginResult(),
+		Requested:                    &Resource{},
+		Allocatable:                  &Resource{},
+		ReservePodList:               sets.NewString(),
+	}
+}
+
+func (n *NodeInfo) DumpNodeInfo() {
+	fmt.Println("Dump Cache")
+
+	fmt.Println("(1') Node() name {", n.Node().Name, "}")
+
+	fmt.Print("(2) pods: ")
+	for _, pod := range n.Pods {
+		fmt.Print(pod.Pod.Name, ", ")
+	}
+	fmt.Println()
+
+	fmt.Print("(3) gpu name: ")
+	for _, uuid := range n.NodeMetric.GPU_UUID {
+		fmt.Print(uuid, ", ")
+	}
+	fmt.Println()
+
+	fmt.Print("(4) gpu uuid: ")
+	for uuid, _ := range n.GPUMetrics {
+		fmt.Print(uuid, ", ")
+	}
+	fmt.Println()
+
+}
+
+func (n *NodeInfo) SetNode(node *corev1.Node) {
+	n.node = node
+	n.Allocatable = NewResource(node.Status.Allocatable)
+}
+
+func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Clientset) error {
+	ip := GetMetricCollectorIP(n.Pods)
+	n.GRPCHost = ip
+
+	n.PluginResult = NewPluginResult()
+
+	err := n.GetInitMetric(ip)
+	if err != nil {
+		fmt.Println("get node {", node.Name, "} metric error!")
+		n.PluginResult.IsFiltered = true
+		return err
+	}
+
+	if isNonGPUNode(node) {
+		n.IsGPUNode = false
+	}
+
+	return nil
+}
+
+func isNonGPUNode(node *corev1.Node) bool {
+	if _, ok := node.Labels["gpu"]; ok {
+		return false
+	}
+	return true
+}
+
+func NewResource(rl v1.ResourceList) *Resource {
+	r := &Resource{}
+	r.Add(rl)
+	return r
+}
+
+func (r *Resource) Add(rl v1.ResourceList) {
+	if r == nil {
+		return
+	}
+
+	for rName, rQuant := range rl {
+		switch rName {
+		case v1.ResourceCPU:
+			r.MilliCPU += rQuant.MilliValue()
+		case v1.ResourceMemory:
+			r.Memory += rQuant.Value()
+		case v1.ResourcePods:
+			r.AllowedPodNumber += int(rQuant.Value())
+		case v1.ResourceEphemeralStorage:
+			r.EphemeralStorage += rQuant.Value()
+		}
+	}
+}
+
+func GetMetricCollectorIP(pods []*PodInfo) string {
+	for _, pod := range pods {
+		if strings.HasPrefix(pod.Pod.Name, "keti-gpu-metric-collector") {
+			return pod.Pod.Status.PodIP
+		}
+	}
+	return ""
+}
+
+type NVLink struct {
+	GPU1       string
+	GPU2       string
+	Lane       int32
+	Score      int
+	IsSelected bool
+	IsFiltered bool
+}
+
+func NewNVLink(s1 string, s2 string, l int32) NVLink {
+	return NVLink{
+		GPU1:       s1,
+		GPU2:       s2,
+		Lane:       l,
+		Score:      0,
+		IsSelected: false,
+		IsFiltered: false,
+	}
+}
+
+type NodeMetric struct {
+	MilliCPUTotal int64
+	MilliCPUUsed  int64
+	MemoryTotal   int64
+	MemoryUsed    int64
+	StorageTotal  int64
+	StorageUsed   int64
+	TotalGPUCount int64
+	GPU_UUID      []string
+	MaxGPUMemory  int64
+	NVLinkList    []NVLink
+}
+
+func NewNodeMetric() *NodeMetric {
+	return &NodeMetric{
+		MilliCPUTotal: 0,
+		MilliCPUUsed:  0,
+		MemoryTotal:   0,
+		MemoryUsed:    0,
+		StorageTotal:  0,
+		StorageUsed:   0,
+		TotalGPUCount: 0,
+		GPU_UUID:      nil,
+		MaxGPUMemory:  0,
+		NVLinkList:    nil,
+	}
+}
+
+type GPUMetric struct {
+	GPUName        string
+	GPUIndex       int64
+	GPUPowerUsed   int64
+	GPUPowerTotal  int64
+	GPUMemoryTotal int64
+	GPUMemoryFree  int64
+	GPUMemoryUsed  int64
+	GPUTemperature int64
+	PodCount       int64
+	GPUFlops       int64
+	GPUArch        int64
+	GPUUtil        int64
+}
+
+func NewGPUMetric() *GPUMetric {
+	return &GPUMetric{
+		GPUName:        "",
+		GPUIndex:       0,
+		GPUPowerUsed:   0,
+		GPUPowerTotal:  0,
+		GPUMemoryTotal: 0,
+		GPUMemoryFree:  0,
+		GPUMemoryUsed:  0,
+		GPUTemperature: 0,
+		PodCount:       0,
+		GPUFlops:       0,
+		GPUArch:        0,
+		GPUUtil:        0,
+	}
+}
+
+type Resource struct {
+	MilliCPU         int64
+	Memory           int64
+	EphemeralStorage int64
+	AllowedPodNumber int
+	ScalarResources  map[v1.ResourceName]int64
+}
+
+type PodResource struct {
+	MilliCPU         int64
+	Memory           int64
+	EphemeralStorage int64
+	GPUCount         int
+	GPUMemoryLimit   int64
+	GPUMemoryRequest int64
+}
+
+func (n *NodeInfo) AddPodInfo(podInfo *PodInfo) {
+	res, _ := calculatePodResource(podInfo.Pod)
+	n.Requested.MilliCPU += res.MilliCPU
+	n.Requested.Memory += res.Memory
+	n.Requested.EphemeralStorage += res.EphemeralStorage
+	n.Pods = append(n.Pods, podInfo)
+	if podWithAffinity(podInfo.Pod) {
+		n.PodsWithAffinity = append(n.PodsWithAffinity, podInfo)
+	}
+	if podWithRequiredAntiAffinity(podInfo.Pod) {
+		n.PodsWithRequiredAntiAffinity = append(n.PodsWithRequiredAntiAffinity, podInfo)
+	}
+
+	n.updateUsedPorts(podInfo.Pod, true)
+	n.updatePVCRefCounts(podInfo.Pod, true)
+}
+
+func (n *NodeInfo) AddPod(pod corev1.Pod) {
+	n.AddPodInfo(NewPodInfo(&pod))
+}
+
+func podWithAffinity(p *corev1.Pod) bool {
+	affinity := p.Spec.Affinity
+	return affinity != nil && (affinity.PodAffinity != nil || affinity.PodAntiAffinity != nil)
+}
+
+func podWithRequiredAntiAffinity(p *corev1.Pod) bool {
+	affinity := p.Spec.Affinity
+	return affinity != nil && affinity.PodAntiAffinity != nil &&
+		len(affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0
+}
+
+func removeFromSlice(s []*PodInfo, k string) []*PodInfo {
+	for i := range s {
+		k2, err := GetPodKey(s[i].Pod)
+		if err != nil {
+			klog.ErrorS(err, "Cannot get pod key", "pod", klog.KObj(s[i].Pod))
+			continue
+		}
+		if k == k2 {
+			s[i] = s[len(s)-1]
+			s = s[:len(s)-1]
+			break
+		}
+	}
+	return s
+}
+
+func (n *NodeInfo) RemovePod(pod *corev1.Pod) error {
+	k, err := GetPodKey(pod)
+	if err != nil {
+		return err
+	}
+	if podWithAffinity(pod) {
+		n.PodsWithAffinity = removeFromSlice(n.PodsWithAffinity, k)
+	}
+	if podWithRequiredAntiAffinity(pod) {
+		n.PodsWithRequiredAntiAffinity = removeFromSlice(n.PodsWithRequiredAntiAffinity, k)
+	}
+
+	n.Pods = removeFromSlice(n.Pods, k)
+	res, _ := calculatePodResource(pod)
+
+	n.Requested.MilliCPU -= res.MilliCPU
+	n.Requested.Memory -= res.Memory
+	n.Requested.EphemeralStorage -= res.EphemeralStorage
+	n.updateUsedPorts(pod, false)
+	n.updatePVCRefCounts(pod, false)
+	n.resetSlicesIfEmpty()
+	return nil
+}
+
+func (n *NodeInfo) resetSlicesIfEmpty() {
+	if len(n.PodsWithAffinity) == 0 {
+		n.PodsWithAffinity = nil
+	}
+	if len(n.PodsWithRequiredAntiAffinity) == 0 {
+		n.PodsWithRequiredAntiAffinity = nil
+	}
+	if len(n.Pods) == 0 {
+		n.Pods = nil
+	}
+}
+
+func Max(a, b int64) int64 {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
+func calculatePodResource(pod *corev1.Pod) (*PodResource, bool) {
+	res := &PodResource{0, 0, 0, 0, 0, 0}
+	isGPUPod := false
+
+	for _, c := range pod.Spec.Containers {
+		GPUMPSLimit := c.Resources.Limits["keti.com/mpsgpu"]
+		if GPUMPSLimit.String() != "" {
+			gc, _ := strconv.Atoi(GPUMPSLimit.String())
+			res.GPUCount += gc
+			isGPUPod = true
+		}
+		for rName, rQuant := range c.Resources.Requests {
+			switch rName {
+			case corev1.ResourceCPU:
+				res.MilliCPU += int64(rQuant.MilliValue())
+			case corev1.ResourceMemory:
+				res.Memory += int64(rQuant.Value())
+			case corev1.ResourceEphemeralStorage:
+				res.EphemeralStorage += int64(rQuant.Value())
+			}
+		}
+		for rName, rQuant := range c.Resources.Limits {
+			switch rName {
+			case corev1.ResourceCPU:
+				if res.MilliCPU == 0 {
+					res.MilliCPU += int64(rQuant.MilliValue())
+				}
+			case corev1.ResourceMemory:
+				if res.Memory == 0 {
+					res.Memory += int64(rQuant.MilliValue())
+				}
+			}
+		}
+	}
+
+	for _, ic := range pod.Spec.InitContainers {
+		GPUMPSLimit := ic.Resources.Limits["keti.com/mpsgpu"]
+		if GPUMPSLimit.String() != "" {
+			gc, _ := strconv.Atoi(GPUMPSLimit.String())
+			res.GPUCount += gc
+			isGPUPod = true
+		}
+		for rName, rQuant := range ic.Resources.Requests {
+			switch rName {
+			case corev1.ResourceCPU:
+				res.MilliCPU += int64(rQuant.MilliValue())
+			case corev1.ResourceMemory:
+				res.Memory += int64(rQuant.Value())
+			case corev1.ResourceEphemeralStorage:
+				res.EphemeralStorage += int64(rQuant.Value())
+			}
+		}
+		for rName, rQuant := range ic.Resources.Limits {
+			switch rName {
+			case corev1.ResourceCPU:
+				if res.MilliCPU == 0 {
+					res.MilliCPU += int64(rQuant.MilliValue())
+				}
+			case corev1.ResourceMemory:
+				if res.Memory == 0 {
+					res.Memory += int64(rQuant.MilliValue())
+				}
+			}
+		}
+	}
+
+	limit := pod.ObjectMeta.Annotations["GPUlimits"]
+	request := pod.ObjectMeta.Annotations["GPUrequest"]
+	if request == "" && limit != "" {
+		res.GPUMemoryRequest = getMemory(limit)
+		res.GPUMemoryLimit = getMemory(limit)
+	} else {
+		res.GPUMemoryRequest = getMemory(request)
+		res.GPUMemoryLimit = getMemory(limit)
+	}
+
+	return res, isGPUPod
+}
+
+func (n *NodeInfo) updateUsedPorts(pod *corev1.Pod, add bool) {
+	for _, container := range pod.Spec.Containers {
+		for _, podPort := range container.Ports {
+			if add {
+				n.UsedPorts.Add(podPort.HostIP, string(podPort.Protocol), podPort.HostPort)
+			} else {
+				n.UsedPorts.Remove(podPort.HostIP, string(podPort.Protocol), podPort.HostPort)
+			}
+		}
+	}
+}
+
+func (n *NodeInfo) updatePVCRefCounts(pod *corev1.Pod, add bool) {
+	for _, v := range pod.Spec.Volumes {
+		if v.PersistentVolumeClaim == nil {
+			continue
+		}
+
+		key := pod.Namespace + "/" + v.PersistentVolumeClaim.ClaimName
+		if add {
+			n.PVCRefCounts[key] += 1
+		} else {
+			n.PVCRefCounts[key] -= 1
+			if n.PVCRefCounts[key] <= 0 {
+				delete(n.PVCRefCounts, key)
+			}
+		}
+	}
+}
+
+func (n *NodeInfo) RemoveNode() {
+	n.node = nil
+}
+func GetPodKey(pod *corev1.Pod) (string, error) {
+	uid := string(pod.UID)
+	if len(uid) == 0 {
+		return "", errors.New("cannot get cache key for pod with empty UID")
+	}
+	return uid, nil
+}
+
+const DefaultBindAllHostIP = "0.0.0.0"
+
+type ProtocolPort struct {
+	Protocol string
+	Port     int32
+}
+
+func NewProtocolPort(protocol string, port int32) *ProtocolPort {
+	pp := &ProtocolPort{
+		Protocol: protocol,
+		Port:     port,
+	}
+
+	if len(pp.Protocol) == 0 {
+		pp.Protocol = string(v1.ProtocolTCP)
+	}
+
+	return pp
+}
+
+type HostPortInfo map[string]map[ProtocolPort]struct{}
+
+func (h HostPortInfo) Add(ip, protocol string, port int32) {
+	if port <= 0 {
+		return
+	}
+
+	h.sanitize(&ip, &protocol)
+
+	pp := NewProtocolPort(protocol, port)
+	if _, ok := h[ip]; !ok {
+		h[ip] = map[ProtocolPort]struct{}{
+			*pp: {},
+		}
+		return
+	}
+
+	h[ip][*pp] = struct{}{}
+}
+
+func (h HostPortInfo) Remove(ip, protocol string, port int32) {
+	if port <= 0 {
+		return
+	}
+
+	h.sanitize(&ip, &protocol)
+
+	pp := NewProtocolPort(protocol, port)
+	if m, ok := h[ip]; ok {
+		delete(m, *pp)
+		if len(h[ip]) == 0 {
+			delete(h, ip)
+		}
+	}
+}
+
+func (h HostPortInfo) Len() int {
+	length := 0
+	for _, m := range h {
+		length += len(m)
+	}
+	return length
+}
+
+func (h HostPortInfo) CheckConflict(ip, protocol string, port int32) bool {
+	if port <= 0 {
+		return false
+	}
+
+	h.sanitize(&ip, &protocol)
+
+	pp := NewProtocolPort(protocol, port)
+
+	if ip == DefaultBindAllHostIP {
+		for _, m := range h {
+			if _, ok := m[*pp]; ok {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, key := range []string{DefaultBindAllHostIP, ip} {
+		if m, ok := h[key]; ok {
+			if _, ok2 := m[*pp]; ok2 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (h HostPortInfo) sanitize(ip, protocol *string) {
+	if len(*ip) == 0 {
+		*ip = DefaultBindAllHostIP
+	}
+	if len(*protocol) == 0 {
+		*protocol = string(v1.ProtocolTCP)
+	}
+}
+
+type GPUSchedulerInterface interface {
+	RunFilteringPlugins(*r.NodeCache, *r.QueuedPodInfo) error
+	RunScoringPlugins(*r.NodeCache, *r.QueuedPodInfo) error
+}
+
+func GPUPodSpreadFramework() GPUSchedulerInterface {
+	return &GPUSchedulerFramework{
+		Filtering: []FilterPlugin{
+			predicates.PodFitsHost{},
+			predicates.CheckNodeUnschedulable{},
+			predicates.PodFitsHostPorts{},
+			predicates.NodeFitsGPUMemory{},
+			predicates.NodeFitsGPUCount{},
+			predicates.PodFitsNodeResources{},
+			predicates.MatchNodeSelector{},
+			predicates.PodToleratesNodeTaints{},
+			predicates.PodTopologySpread{},
+			predicates.InterPodAffinity{},
+			predicates.CheckVolumeBinding{},
+			predicates.NoVolumeZoneConflict{},
+			predicates.CheckVolumeRestriction{},
+			predicates.CheckNodeReserved{},
+		},
+		Scoring: []ScorePlugin{
+			priorities.NodeAffinity{},
+			priorities.TaintToleration{},
+			priorities.SelectorSpread{},
+			priorities.InterPodAffinity{},
+			priorities.PodTopologySpread{},
+			priorities.ImageLocality{},
+			priorities.NodeResourcesFit{},
+			priorities.BalancedNodeResourceAllocation{},
+			priorities.VolumeBinding{},
+			priorities.NodeMetricBasedScoring{},
+			priorities.SetGPUFlopsScore{},
+			priorities.AllocatedPodCountInGPU{},
+			priorities.GPUUtilization{},
+			priorities.GPUMemoryUsage{},
+			priorities.GPUMerticBased{},
+			priorities.GPUTemperature{},
+			priorities.GPUPower{},
+			priorities.GPUBandwidth{},
+			priorities.GPUDirectStoragePriority{},
+			priorities.BalancedGPUProcessType{},
+		},
+	}
+}
+
+func GPUPodBinpackFramework() GPUSchedulerInterface {
+	return &GPUSchedulerFramework{
+		Filtering: []FilterPlugin{
+			predicates.PodFitsHost{},
+			predicates.CheckNodeUnschedulable{},
+			predicates.PodFitsHostPorts{},
+			predicates.NodeFitsGPUMemory{},
+			predicates.NodeFitsGPUCount{},
+			predicates.PodFitsNodeResources{},
+			predicates.MatchNodeSelector{},
+			predicates.PodToleratesNodeTaints{},
+			predicates.PodTopologySpread{},
+			predicates.InterPodAffinity{},
+			predicates.CheckVolumeBinding{},
+			predicates.NoVolumeZoneConflict{},
+			predicates.CheckVolumeRestriction{},
+			predicates.CheckNodeReserved{},
+		},
+		Scoring: []ScorePlugin{
+			priorities.NodeAffinity{},
+			priorities.TaintToleration{},
+			priorities.SelectorSpread{},
+			priorities.InterPodAffinity{},
+			priorities.PodTopologySpread{},
+			priorities.ImageLocality{},
+			priorities.NodeResourcesFit{},
+			priorities.BalancedNodeResourceAllocation{},
+			priorities.VolumeBinding{},
+			priorities.NodeMetricBasedScoring{},
+			priorities.SetGPUFlopsScore{},
+			priorities.GPUUtilization{},
+			priorities.GPUMemoryUsage{},
+			priorities.GPUMerticBased{},
+			priorities.GPUDirectStoragePriority{},
+			priorities.BalancedGPUProcessType{},
+		},
+	}
+}
+
+func NonGPUPodFramework() GPUSchedulerInterface {
+	return &GPUSchedulerFramework{
+		Filtering: []FilterPlugin{
+			predicates.PodFitsHost{},
+			predicates.CheckNodeUnschedulable{},
+			predicates.PodFitsHostPorts{},
+			predicates.PodFitsNodeResources{},
+			predicates.MatchNodeSelector{},
+			predicates.PodToleratesNodeTaints{},
+			predicates.PodTopologySpread{},
+			predicates.InterPodAffinity{},
+			predicates.CheckVolumeBinding{},
+			predicates.NoVolumeZoneConflict{},
+			predicates.CheckVolumeRestriction{},
+			predicates.CheckNodeReserved{},
+		},
+		Scoring: []ScorePlugin{
+			priorities.NodeAffinity{},
+			priorities.TaintToleration{},
+			priorities.SelectorSpread{},
+			priorities.InterPodAffinity{},
+			priorities.PodTopologySpread{},
+			priorities.ImageLocality{},
+			priorities.NodeResourcesFit{},
+			priorities.BalancedNodeResourceAllocation{},
+			priorities.VolumeBinding{},
+			priorities.NodeMetricBasedScoring{},
+		},
+	}
+}
+
+type GPUSchedulerFramework struct {
+	Filtering []FilterPlugin
+	Scoring   []ScorePlugin
+}
+
+type PluginName interface {
+	Name() string
+}
+
+type FilterPlugin interface {
+	PluginName
+	Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo)
+	Debugg()
+}
+
+type ScorePlugin interface {
+	PluginName
+	Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo)
+	Debugg(nodeInfoCache *r.NodeCache)
+}
+
+func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
+	fmt.Println("[STEP 1] Run Filtering Plugins")
+	for _, fp := range sf.Filtering {
+		fp.Debugg()
+		fp.Filter(nodeInfoCache, newPod)
+		if nodeInfoCache.AvailableNodeCount == 0 {
+			return errors.New("there isn't any node to schedule")
+		}
+	}
+	return nil
+}
+
+func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
+	fmt.Println("[STEP 2] Run Scoring Plugins")
+	for _, sp := range sf.Scoring {
+		sp.Score(nodeInfoCache, newPod)
+		sp.Debugg(nodeInfoCache)
+	}
+	return nil
+}
+
+type PodFitsHost struct{}
+
+func (pl PodFitsHost) Name() string {
+	return "PodFitsHost"
+}
+
+func (pl PodFitsHost) Debugg() {
+	fmt.Println("#1. ", pl.Name())
+}
+
+func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	if len(newPod.Pod.Spec.NodeName) == 0 {
+		return
+	}
+
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if newPod.Pod.Spec.NodeName != nodeName {
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type CheckNodeUnschedulable struct{}
+
+func (pl CheckNodeUnschedulable) Name() string {
+	return "CheckNodeUnschedulable"
+}
+
+func (pl CheckNodeUnschedulable) Debugg() {
+	fmt.Println("#2. ", pl.Name())
+}
+
+func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(newPod.Pod.Spec.Tolerations, &corev1.Taint{
+				Key:    corev1.TaintNodeUnschedulable,
+				Effect: corev1.TaintEffectNoSchedule,
+			})
+
+			if nodeinfo.Node().Spec.Unschedulable && !podToleratesUnschedulable {
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type PodFitsHostPorts struct{}
+
+func (pl PodFitsHostPorts) Name() string {
+	return "PodFitsHostPorts"
+}
+
+func (pl PodFitsHostPorts) Debugg() {
+	fmt.Println("#3. ", pl.Name())
+}
+
+func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	wantPorts := getContainerPorts(newPod.Pod)
+	if len(wantPorts) == 0 {
+		return
+	}
+
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if !fitsPorts(wantPorts, nodeinfo) {
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+func getContainerPorts(pods ...*corev1.Pod) []*corev1.ContainerPort {
+	var ports []*corev1.ContainerPort
+	for _, pod := range pods {
+		for i := range pod.Spec.Containers {
+			container := &pod.Spec.Containers[i]
+			for j := range container.Ports {
+				ports = append(ports, &container.Ports[j])
+			}
+		}
+	}
+	return ports
+}
+
+func fitsPorts(wantPorts []*corev1.ContainerPort, nodeinfo *r.NodeInfo) bool {
+	existingPorts := nodeinfo.UsedPorts
+	for _, cp := range wantPorts {
+		if existingPorts.CheckConflict(cp.HostIP, string(cp.Protocol), cp.HostPort) {
+			return false
+		}
+	}
+	return true
+}
+
+type NodeFitsGPUMemory struct{}
+
+func (pl NodeFitsGPUMemory) Name() string {
+	return "NodeFitsGPUMemory"
+}
+
+func (pl NodeFitsGPUMemory) Debugg() {
+	fmt.Println("#4. ", pl.Name())
+}
+
+func (pl NodeFitsGPUMemory) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print("- nodes: {", nodeName, " : gpu-")
+			for gpuName, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[gpuName].IsFiltered {
+					if gpu.GPUMemoryFree < newPod.RequestedResource.GPUMemoryRequest {
+						nodeinfo.PluginResult.GPUScores[gpuName].FilterGPU(pl.Name())
+						nodeinfo.PluginResult.GPUCountDown()
+					}
+				}
+				if !nodeinfo.PluginResult.GPUScores[gpuName].IsFiltered {
+					fmt.Print(gpuName, ", ")
+				}
+			}
+			fmt.Println("}")
+		}
+	}
+}
+
+type NodeFitsGPUCount struct{}
+
+func (pl NodeFitsGPUCount) Name() string {
+	return "NodeFitsGPUCount"
+}
+
+func (pl NodeFitsGPUCount) Debugg() {
+	fmt.Println("#5. ", pl.Name())
+}
+
+func (pl NodeFitsGPUCount) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if nodeinfo.PluginResult.AvailableGPUCount < newPod.RequestedResource.GPUCount {
+				fmt.Println("//gpu", nodeinfo.PluginResult.AvailableGPUCount, newPod.RequestedResource.GPUCount)
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type PodFitsNodeResources struct{}
+
+func (pl PodFitsNodeResources) Name() string {
+	return "PodFitsNodeResources"
+}
+
+func (pl PodFitsNodeResources) Debugg() {
+	fmt.Println("#6. ", pl.Name())
+}
+
+func (pl PodFitsNodeResources) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if nodeinfo.NodeMetric.MilliCPUUsed+newPod.RequestedResource.MilliCPU > nodeinfo.NodeMetric.MilliCPUTotal {
+				fmt.Println("//cpu", nodeinfo.NodeMetric.MilliCPUUsed, newPod.RequestedResource.MilliCPU)
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+			if nodeinfo.NodeMetric.MemoryUsed+newPod.RequestedResource.Memory > nodeinfo.NodeMetric.MemoryTotal {
+				fmt.Println("//memory", nodeinfo.NodeMetric.MemoryUsed, newPod.RequestedResource.Memory)
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+			if nodeinfo.NodeMetric.StorageUsed+newPod.RequestedResource.EphemeralStorage > nodeinfo.NodeMetric.StorageTotal {
+				fmt.Println("//storage", nodeinfo.NodeMetric.StorageUsed, newPod.RequestedResource.EphemeralStorage)
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type MatchNodeSelector struct{}
+
+func (pl MatchNodeSelector) Name() string {
+	return "MatchNodeSelector"
+}
+
+func (pl MatchNodeSelector) Debugg() {
+	fmt.Println("#7. ", pl.Name())
+}
+
+func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	if len(newPod.Pod.Spec.NodeSelector) == 0 {
+		return
+	}
+
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for key, pod_value := range newPod.Pod.Spec.NodeSelector {
+				if node_value, ok := nodeinfo.Node().Labels[key]; ok {
+					if pod_value == node_value {
+						continue
+					}
+				}
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+				break
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type PodToleratesNodeTaints struct{}
+
+func (pl PodToleratesNodeTaints) Name() string {
+	return "PodToleratesNodeTaints"
+}
+
+func (pl PodToleratesNodeTaints) Debugg() {
+	fmt.Println("#8. ", pl.Name())
+}
+
+func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for _, taint := range nodeinfo.Node().Spec.Taints {
+				tolerated := false
+				for _, toleration := range newPod.Pod.Spec.Tolerations {
+					if toleration.ToleratesTaint(&taint) {
+						tolerated = true
+						break
+					}
+				}
+				if !tolerated {
+					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeInfoCache.NodeCountDown()
+					break
+				}
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+type PodTopologySpread struct {
+	defaultConstraints                  []v1.TopologySpreadConstraint
+	services                            corelisters.ServiceLister
+	replicationCtrls                    corelisters.ReplicationControllerLister
+	replicaSets                         appslisters.ReplicaSetLister
+	statefulSets                        appslisters.StatefulSetLister
+	enableMinDomainsInPodTopologySpread bool
+}
+
+func (pl PodTopologySpread) Name() string {
+	return "PodTopologySpread"
+}
+
+func (pl PodTopologySpread) Debugg() {
+	fmt.Println("#9.", pl.Name())
+}
+
+type topologySpreadConstraint struct {
+	MaxSkew     int32
+	TopologyKey string
+	Selector    labels.Selector
+	MinDomains  int32
+}
+
+type criticalPaths [2]struct {
+	TopologyValue string
+	MatchNum      int
+}
+
+func (pl *PodTopologySpread) calPreFilterState(pod *v1.Pod, cache *r.NodeCache) (*preFilterState9, error) {
+
+	var constraints []topologySpreadConstraint
+	var err error
+
+	if len(pod.Spec.TopologySpreadConstraints) > 0 {
+		constraints, err = filterTopologySpreadConstraints(pod.Spec.TopologySpreadConstraints, v1.DoNotSchedule)
+		if err != nil {
+			return nil, fmt.Errorf("obtaining pod's hard topology spread constraints: %w", err)
+		}
+	} else {
+		constraints, err = pl.buildDefaultConstraints(pod, v1.DoNotSchedule)
+		if err != nil {
+			return nil, fmt.Errorf("setting default hard topology spread constraints: %w", err)
+		}
+	}
+
+	if len(constraints) == 0 {
+		return &preFilterState9{}, nil
+	}
+
+	s := preFilterState9{
+		Constraints:          constraints,
+		TpKeyToCriticalPaths: make(map[string]*criticalPaths, len(constraints)),
+		TpPairToMatchNum:     make(map[topologyPair]int, sizeHeuristic(cache.AvailableNodeCount, constraints)),
+	}
+
+	requiredSchedulingTerm := nodeaffinity.GetRequiredNodeAffinity(pod)
+	tpCountsByNode := make([]map[topologyPair]int, cache.AvailableNodeCount)
+	i := 0
+	for _, nodeInfo := range cache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			node := nodeInfo.Node()
+			if node == nil {
+				klog.ErrorS(nil, "Node not found")
+				continue
+			}
+
+			match, _ := requiredSchedulingTerm.Match(node)
+			if !match {
+				continue
+			}
+
+			if !nodeLabelsMatchSpreadConstraints(node.Labels, constraints) {
+				continue
+			}
+
+			tpCounts := make(map[topologyPair]int, len(constraints))
+			for _, c := range constraints {
+				pair := topologyPair{key: c.TopologyKey, value: node.Labels[c.TopologyKey]}
+				count := countPodsMatchSelector(nodeInfo.Pods, c.Selector, pod.Namespace)
+				tpCounts[pair] = count
+			}
+			tpCountsByNode[i] = tpCounts
+			i++
+		}
+	}
+
+	for _, tpCounts := range tpCountsByNode {
+		for tp, count := range tpCounts {
+			s.TpPairToMatchNum[tp] += count
+		}
+	}
+	if pl.enableMinDomainsInPodTopologySpread {
+		s.TpKeyToDomainsNum = make(map[string]int, len(constraints))
+		for tp := range s.TpPairToMatchNum {
+			s.TpKeyToDomainsNum[tp.key]++
+		}
+	}
+
+	for i := 0; i < len(constraints); i++ {
+		key := constraints[i].TopologyKey
+		s.TpKeyToCriticalPaths[key] = newCriticalPaths()
+	}
+	for pair, num := range s.TpPairToMatchNum {
+		s.TpKeyToCriticalPaths[pair.key].update(pair.value, num)
+	}
+
+	return &s, nil
+}
+
+func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+
+	s, err := pl.calPreFilterState(newPod.Pod, nodeInfoCache)
+
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if err != nil {
+				fmt.Println("calPreFilterState error")
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+
+			if len(s.Constraints) == 0 {
+				continue
+			}
+
+			podLabelSet := labels.Set(newPod.Pod.Labels)
+			for _, c := range s.Constraints {
+				tpKey := c.TopologyKey
+				tpVal, ok := nodeinfo.Node().Labels[c.TopologyKey]
+				if !ok {
+					fmt.Println("Node doesn't have required label", "node", nodeName, "label", tpKey)
+					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeInfoCache.NodeCountDown()
+					continue
+				}
+
+				selfMatchNum := 0
+				if c.Selector.Matches(podLabelSet) {
+					selfMatchNum = 1
+				}
+
+				pair := topologyPair{key: tpKey, value: tpVal}
+
+				minMatchNum, err := s.minMatchNum(tpKey, c.MinDomains, pl.enableMinDomainsInPodTopologySpread)
+				if err != nil {
+					fmt.Println(err, "Internal error occurred while retrieving value precalculated in PreFilter", "topologyKey", tpKey, "paths", s.TpKeyToCriticalPaths)
+					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeInfoCache.NodeCountDown()
+					continue
+				}
+
+				matchNum := 0
+				if tpCount, ok := s.TpPairToMatchNum[pair]; ok {
+					matchNum = tpCount
+				}
+				skew := matchNum + selfMatchNum - minMatchNum
+				if skew > int(c.MaxSkew) {
+					fmt.Println("Node failed spreadConstraint: matchNum + selfMatchNum - minMatchNum > maxSkew", "node", nodeName, "topologyKey", tpKey, "matchNum", matchNum, "selfMatchNum", selfMatchNum, "minMatchNum", minMatchNum, "maxSkew", c.MaxSkew)
+					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeInfoCache.NodeCountDown()
+					continue
+				}
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
+	var result []topologySpreadConstraint
+	for _, c := range constraints {
+		if c.WhenUnsatisfiable == action {
+			selector, err := metav1.LabelSelectorAsSelector(c.LabelSelector)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, topologySpreadConstraint{
+				MaxSkew:     c.MaxSkew,
+				TopologyKey: c.TopologyKey,
+				Selector:    selector,
+			})
+		}
+	}
+	return result, nil
+}
+
+func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
+	constraints, err := filterTopologySpreadConstraints(pl.defaultConstraints, action)
+	if err != nil || len(constraints) == 0 {
+		return nil, err
+	}
+	selector := defaultSelector(p, pl.services, pl.replicationCtrls, pl.replicaSets, pl.statefulSets)
+	if selector.Empty() {
+		return nil, nil
+	}
+	for i := range constraints {
+		constraints[i].Selector = selector
+	}
+	return constraints, nil
+}
+
+func sizeHeuristic(nodes int, constraints []topologySpreadConstraint) int {
+	for _, c := range constraints {
+		if c.TopologyKey == v1.LabelHostname {
+			return nodes
+		}
+	}
+	return 0
+}
+
+func countPodsMatchSelector(podInfos []*r.PodInfo, selector labels.Selector, ns string) int {
+	count := 0
+	for _, p := range podInfos {
+		if p.Pod.DeletionTimestamp != nil || p.Pod.Namespace != ns {
+			continue
+		}
+		if selector.Matches(labels.Set(p.Pod.Labels)) {
+			count++
+		}
+	}
+	return count
+}
+
+func nodeLabelsMatchSpreadConstraints(nodeLabels map[string]string, constraints []topologySpreadConstraint) bool {
+	for _, c := range constraints {
+		if _, ok := nodeLabels[c.TopologyKey]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func newCriticalPaths() *criticalPaths {
+	return &criticalPaths{{MatchNum: math.MaxInt32}, {MatchNum: math.MaxInt32}}
+}
+
+func (p *criticalPaths) update(tpVal string, num int) {
+	i := -1
+	if tpVal == p[0].TopologyValue {
+		i = 0
+	} else if tpVal == p[1].TopologyValue {
+		i = 1
+	}
+
+	if i >= 0 {
+		p[i].MatchNum = num
+		if p[0].MatchNum > p[1].MatchNum {
+			p[0], p[1] = p[1], p[0]
+		}
+	} else {
+		if num < p[0].MatchNum {
+			p[1] = p[0]
+			p[0].TopologyValue, p[0].MatchNum = tpVal, num
+		} else if num < p[1].MatchNum {
+			p[1].TopologyValue, p[1].MatchNum = tpVal, num
+		}
+	}
+}
+
+func (s *preFilterState9) minMatchNum(tpKey string, minDomains int32, enableMinDomainsInPodTopologySpread bool) (int, error) {
+	paths, ok := s.TpKeyToCriticalPaths[tpKey]
+	if !ok {
+		return 0, fmt.Errorf("failed to retrieve path by topology key")
+	}
+
+	minMatchNum := paths[0].MatchNum
+	if !enableMinDomainsInPodTopologySpread {
+		return minMatchNum, nil
+	}
+
+	domainsNum, ok := s.TpKeyToDomainsNum[tpKey]
+	if !ok {
+		return 0, fmt.Errorf("failed to retrieve the number of domains by topology key")
+	}
+
+	if domainsNum < int(minDomains) {
+		minMatchNum = 0
+	}
+
+	return minMatchNum, nil
+}
+
+var (
+	rcKind = v1.SchemeGroupVersion.WithKind("ReplicationController")
+	rsKind = appsv1.SchemeGroupVersion.WithKind("ReplicaSet")
+	ssKind = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
+)
+
+func defaultSelector(
+	pod *v1.Pod,
+	sl corelisters.ServiceLister,
+	cl corelisters.ReplicationControllerLister,
+	rsl appslisters.ReplicaSetLister,
+	ssl appslisters.StatefulSetLister,
+) labels.Selector {
+	labelSet := make(labels.Set)
+	if services, err := GetPodServices(sl, pod); err == nil {
+		for _, service := range services {
+			labelSet = labels.Merge(labelSet, service.Spec.Selector)
+		}
+	}
+	selector := labelSet.AsSelector()
+
+	owner := metav1.GetControllerOfNoCopy(pod)
+	if owner == nil {
+		return selector
+	}
+
+	gv, err := schema.ParseGroupVersion(owner.APIVersion)
+	if err != nil {
+		return selector
+	}
+
+	gvk := gv.WithKind(owner.Kind)
+	switch gvk {
+	case rcKind:
+		if rc, err := cl.ReplicationControllers(pod.Namespace).Get(owner.Name); err == nil {
+			labelSet = labels.Merge(labelSet, rc.Spec.Selector)
+			selector = labelSet.AsSelector()
+		}
+	case rsKind:
+		if rs, err := rsl.ReplicaSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	case ssKind:
+		if ss, err := ssl.StatefulSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(ss.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	default:
+	}
+
+	return selector
+}
+
+func GetPodServices(sl corelisters.ServiceLister, pod *v1.Pod) ([]*v1.Service, error) {
+	allServices, err := sl.Services(pod.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	var services []*v1.Service
+	for i := range allServices {
+		service := allServices[i]
+		if service.Spec.Selector == nil {
+			continue
+		}
+		selector := labels.Set(service.Spec.Selector).AsSelectorPreValidated()
+		if selector.Matches(labels.Set(pod.Labels)) {
+			services = append(services, service)
+		}
+	}
+
+	return services, nil
+}
+
+type InterPodAffinity struct {
+	args         config.InterPodAffinityArgs
+	sharedLister framework.SharedLister
+	nsLister     listersv1.NamespaceLister
+}
+
+const (
+	ErrReasonExistingAntiAffinityRulesNotMatch = "node(s) didn't satisfy existing pods anti-affinity rules"
+	ErrReasonAffinityRulesNotMatch             = "node(s) didn't match pod affinity rules"
+	ErrReasonAntiAffinityRulesNotMatch         = "node(s) didn't match pod anti-affinity rules"
+)
+
+type topologyToMatchedTermCount map[topologyPair]int64
+
+func (pl InterPodAffinity) Name() string {
+	return "InterPodAffinity"
+}
+
+func (pl InterPodAffinity) Debugg() {
+	fmt.Println("#10.", pl.Name())
+}
+
+func (pl *InterPodAffinity) PreFilter(podInfo *r.PodInfo, nodeInfoCache *r.NodeCache) (*preFilterState10, error) {
+	var nodesWithRequiredAntiAffinityPods []*r.NodeInfo
+	var err error
+	if nodesWithRequiredAntiAffinityPods, err = pl.sharedLister.NodeInfos().HavePodsWithRequiredAntiAffinityList(); err != nil {
+		return nil, fmt.Errorf("failed to list NodeInfos with pods with affinity: %w", err)
+	}
+
+	s := &preFilterState10{}
+
+	s.podInfo = podInfo
+	if s.podInfo.ParseError != nil {
+		return nil, fmt.Errorf("parsing pod: %+v", s.podInfo.ParseError)
+	}
+
+	for i := range s.podInfo.RequiredAffinityTerms {
+		if err := pl.mergeAffinityTermNamespacesIfNotEmpty(&s.podInfo.RequiredAffinityTerms[i]); err != nil {
+			return nil, err
+		}
+	}
+	for i := range s.podInfo.RequiredAntiAffinityTerms {
+		if err := pl.mergeAffinityTermNamespacesIfNotEmpty(&s.podInfo.RequiredAntiAffinityTerms[i]); err != nil {
+			return nil, err
+		}
+	}
+	s.namespaceLabels = GetNamespaceLabelsSnapshot(podInfo.Pod.Namespace, pl.nsLister)
+
+	s.existingAntiAffinityCounts = pl.getExistingAntiAffinityCounts(podInfo.Pod, s.namespaceLabels, nodesWithRequiredAntiAffinityPods)
+	s.affinityCounts, s.antiAffinityCounts = pl.getIncomingAffinityAntiAffinityCounts(s.podInfo, nodeInfoCache)
+
+	return s, nil
+}
+
+func (pl InterPodAffinity) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+
+			state, err := pl.PreFilter(newPod.PodInfo, nodeInfoCache)
+			if err != nil {
+				fmt.Println("inter_pod_affinity prefilter error - ", err)
+				return
+			}
+
+			if !satisfyPodAffinity(state, nodeinfo) {
+				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonAffinityRulesNotMatch)
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+
+			if !satisfyPodAntiAffinity(state, nodeinfo) {
+				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonAntiAffinityRulesNotMatch)
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+
+			if !satisfyExistingPodsAntiAffinity(state, nodeinfo) {
+				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonExistingAntiAffinityRulesNotMatch)
+				nodeInfoCache.NodeCountDown()
+				continue
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+func satisfyExistingPodsAntiAffinity(state *preFilterState10, nodeInfo *r.NodeInfo) bool {
+	if len(state.existingAntiAffinityCounts) > 0 {
+		for topologyKey, topologyValue := range nodeInfo.Node().Labels {
+			tp := topologyPair{key: topologyKey, value: topologyValue}
+			if state.existingAntiAffinityCounts[tp] > 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func satisfyPodAntiAffinity(state *preFilterState10, nodeInfo *r.NodeInfo) bool {
+	if len(state.antiAffinityCounts) > 0 {
+		for _, term := range state.podInfo.RequiredAntiAffinityTerms {
+			if topologyValue, ok := nodeInfo.Node().Labels[term.TopologyKey]; ok {
+				tp := topologyPair{key: term.TopologyKey, value: topologyValue}
+				if state.antiAffinityCounts[tp] > 0 {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func satisfyPodAffinity(state *preFilterState10, nodeInfo *r.NodeInfo) bool {
+	podsExist := true
+	for _, term := range state.podInfo.RequiredAffinityTerms {
+		if topologyValue, ok := nodeInfo.Node().Labels[term.TopologyKey]; ok {
+			tp := topologyPair{key: term.TopologyKey, value: topologyValue}
+			if state.affinityCounts[tp] <= 0 {
+				podsExist = false
+			}
+		} else {
+			return false
+		}
+	}
+
+	if !podsExist {
+		if len(state.affinityCounts) == 0 && podMatchesAllAffinityTerms(state.podInfo.RequiredAffinityTerms, state.podInfo.Pod) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+func podMatchesAllAffinityTerms(terms []r.AffinityTerm, pod *v1.Pod) bool {
+	if len(terms) == 0 {
+		return false
+	}
+	for _, t := range terms {
+		if !t.Matches(pod, nil) {
+			return false
+		}
+	}
+	return true
+}
+
+func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *r.AffinityTerm) error {
+	if at.NamespaceSelector.Empty() {
+		return nil
+	}
+	ns, err := pl.nsLister.List(at.NamespaceSelector)
+	if err != nil {
+		return err
+	}
+	for _, n := range ns {
+		at.Namespaces.Insert(n.Name)
+	}
+	at.NamespaceSelector = labels.Nothing()
+	return nil
+}
+
+func GetNamespaceLabelsSnapshot(ns string, nsLister listersv1.NamespaceLister) (nsLabels labels.Set) {
+	podNS, err := nsLister.Get(ns)
+	if err == nil {
+		return labels.Merge(podNS.Labels, nil)
+	}
+	klog.V(3).InfoS("getting namespace, assuming empty set of namespace labels", "namespace", ns, "err", err)
+	return
+}
+
+func (pl *InterPodAffinity) getExistingAntiAffinityCounts(pod *v1.Pod, nsLabels labels.Set, cache *r.NodeCache) topologyToMatchedTermCount {
+	topoMaps := make([]topologyToMatchedTermCount, cache.AvailableNodeCount)
+	index := int32(-1)
+	for _, nodeInfo := range cache.NodeInfoList {
+		node := nodeInfo.Node()
+		if node == nil {
+			klog.ErrorS(nil, "Node not found")
+			continue
+		}
+		topoMap := make(topologyToMatchedTermCount)
+		for _, existingPod := range nodeInfo.PodsWithRequiredAntiAffinity {
+			topoMap.updateWithAntiAffinityTerms(existingPod.RequiredAntiAffinityTerms, pod, nsLabels, node, 1)
+		}
+		if len(topoMap) != 0 {
+			topoMaps[atomic.AddInt32(&index, 1)] = topoMap
+		}
+	}
+
+	result := make(topologyToMatchedTermCount)
+	for i := 0; i <= int(index); i++ {
+		result.append(topoMaps[i])
+	}
+
+	return result
+}
+
+func (m topologyToMatchedTermCount) append(toAppend topologyToMatchedTermCount) {
+	for pair := range toAppend {
+		m[pair] += toAppend[pair]
+	}
+}
+
+func (pl *InterPodAffinity) getIncomingAffinityAntiAffinityCounts(podInfo *r.PodInfo, cache *r.NodeCache) (topologyToMatchedTermCount, topologyToMatchedTermCount) {
+	affinityCounts := make(topologyToMatchedTermCount)
+	antiAffinityCounts := make(topologyToMatchedTermCount)
+	if len(podInfo.RequiredAffinityTerms) == 0 && len(podInfo.RequiredAntiAffinityTerms) == 0 {
+		return affinityCounts, antiAffinityCounts
+	}
+
+	affinityCountsList := make([]topologyToMatchedTermCount, cache.AvailableNodeCount)
+	antiAffinityCountsList := make([]topologyToMatchedTermCount, cache.AvailableNodeCount)
+	index := int32(-1)
+	for _, nodeInfo := range cache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			node := nodeInfo.Node()
+			if node == nil {
+				klog.ErrorS(nil, "Node not found")
+				continue
+			}
+			affinity := make(topologyToMatchedTermCount)
+			antiAffinity := make(topologyToMatchedTermCount)
+			for _, existingPod := range nodeInfo.Pods {
+				affinity.updateWithAffinityTerms(podInfo.RequiredAffinityTerms, existingPod.Pod, node, 1)
+				antiAffinity.updateWithAntiAffinityTerms(podInfo.RequiredAntiAffinityTerms, existingPod.Pod, nil, node, 1)
+			}
+
+			if len(affinity) > 0 || len(antiAffinity) > 0 {
+				k := atomic.AddInt32(&index, 1)
+				affinityCountsList[k] = affinity
+				antiAffinityCountsList[k] = antiAffinity
+			}
+		}
+	}
+
+	for i := 0; i <= int(index); i++ {
+		affinityCounts.append(affinityCountsList[i])
+		antiAffinityCounts.append(antiAffinityCountsList[i])
+	}
+
+	return affinityCounts, antiAffinityCounts
+}
+
+func (m topologyToMatchedTermCount) updateWithAntiAffinityTerms(terms []r.AffinityTerm, pod *v1.Pod, nsLabels labels.Set, node *v1.Node, value int64) {
+	for _, t := range terms {
+		if t.Matches(pod, nsLabels) {
+			m.update(node, t.TopologyKey, value)
+		}
+	}
+}
+
+func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64) {
+	if tv, ok := node.Labels[tk]; ok {
+		pair := topologyPair{key: tk, value: tv}
+		m[pair] += value
+		if m[pair] == 0 {
+			delete(m, pair)
+		}
+	}
+}
+
+func (m topologyToMatchedTermCount) updateWithAffinityTerms(
+	terms []r.AffinityTerm, pod *v1.Pod, node *v1.Node, value int64) {
+	if podMatchesAllAffinityTerms(terms, pod) {
+		for _, t := range terms {
+			m.update(node, t.TopologyKey, value)
+		}
+	}
+}
+
+type CheckVolumeBinding struct{}
+
+func (pl CheckVolumeBinding) Name() string {
+	return "CheckVolumeBinding"
+}
+
+func (pl CheckVolumeBinding) Debugg() {
+	fmt.Println("#11. ", pl.Name())
+}
+
+func (pl CheckVolumeBinding) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			conflict := false
+			for _, volume := range newPod.Pod.Spec.Volumes {
+				for _, podInfo := range nodeinfo.Pods {
+					if isVolumeConflict(volume, podInfo.Pod) {
+						conflict = true
+						break
+					}
+				}
+				if conflict {
+					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeInfoCache.NodeCountDown()
+					break
+				}
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+}
+
+func isVolumeConflict(volume corev1.Volume, pod *corev1.Pod) bool {
+	if volume.GCEPersistentDisk == nil && volume.AWSElasticBlockStore == nil && volume.RBD == nil && volume.ISCSI == nil {
+		return false
+	}
+
+	for _, existingVolume := range pod.Spec.Volumes {
+		if volume.GCEPersistentDisk != nil && existingVolume.GCEPersistentDisk != nil {
+			disk, existingDisk := volume.GCEPersistentDisk, existingVolume.GCEPersistentDisk
+			if disk.PDName == existingDisk.PDName && !(disk.ReadOnly && existingDisk.ReadOnly) {
+				return true
+			}
+		}
+
+		if volume.AWSElasticBlockStore != nil && existingVolume.AWSElasticBlockStore != nil {
+			if volume.AWSElasticBlockStore.VolumeID == existingVolume.AWSElasticBlockStore.VolumeID {
+				return true
+			}
+		}
+
+		if volume.ISCSI != nil && existingVolume.ISCSI != nil {
+			iqn := volume.ISCSI.IQN
+			eiqn := existingVolume.ISCSI.IQN
+			if iqn == eiqn && !(volume.ISCSI.ReadOnly && existingVolume.ISCSI.ReadOnly) {
+				return true
+			}
+		}
+
+		if volume.RBD != nil && existingVolume.RBD != nil {
+			mon, pool, image := volume.RBD.CephMonitors, volume.RBD.RBDPool, volume.RBD.RBDImage
+			emon, epool, eimage := existingVolume.RBD.CephMonitors, existingVolume.RBD.RBDPool, existingVolume.RBD.RBDImage
+			if haveOverlap(mon, emon) && pool == epool && image == eimage && !(volume.RBD.ReadOnly && existingVolume.RBD.ReadOnly) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func haveOverlap(a1, a2 []string) bool {
+	if len(a1) > len(a2) {
+		a1, a2 = a2, a1
+	}
+	m := map[string]bool{}
+
+	for _, val := range a1 {
+		m[val] = true
+	}
+	for _, val := range a2 {
+		if _, ok := m[val]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+type CheckNodeReserved struct{}
+
+func (pl CheckNodeReserved) Name() string {
+	return "CheckNodeReserved"
+}
+
+func (pl CheckNodeReserved) Debugg() {
+	fmt.Println("#14. ", pl.Name())
+}
+
+func (pl CheckNodeReserved) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	fmt.Print("- nodes: {")
+	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if nodeinfo.Node().Annotations["reserved"] != "" {
+				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeInfoCache.NodeCountDown()
+			}
+		}
+		if !nodeinfo.PluginResult.IsFiltered {
+			fmt.Print(nodeName, ", ")
+		}
+	}
+	fmt.Println("}")
+
+}
+
+type NodeAffinity struct {
+	addedPrefSchedTerms *nodeaffinity.PreferredSchedulingTerms
+}
+
+func (pl NodeAffinity) Name() string {
+	return "NodeAffinity"
+}
+
+func (pl NodeAffinity) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#1.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl NodeAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	preferredNodeAffinity, err := getPodPreferredNodeAffinity(newPod.Pod)
+	if err != nil {
+		return
+	}
+	state := &preScoreState1{
+		preferredNodeAffinity: preferredNodeAffinity,
+	}
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+
+			var count int64
+			if pl.addedPrefSchedTerms != nil {
+				count += pl.addedPrefSchedTerms.Score(nodeinfo.Node())
+			}
+
+			if state.preferredNodeAffinity != nil {
+				count += state.preferredNodeAffinity.Score(nodeinfo.Node())
+			}
+
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count) / float64(r.Ns)))
+		}
+	}
+
+}
+
+func getPodPreferredNodeAffinity(pod *v1.Pod) (*nodeaffinity.PreferredSchedulingTerms, error) {
+	affinity := pod.Spec.Affinity
+	if affinity != nil && affinity.NodeAffinity != nil && affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+		return nodeaffinity.NewPreferredSchedulingTerms(affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+	}
+	return nil, nil
+}
+
+type TaintToleration struct{}
+
+func (pl TaintToleration) Name() string {
+	return "TaintToleration"
+}
+
+func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#2.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+	state := &preScoreState2{
+		tolerationsPreferNoSchedule: tolerationsPreferNoSchedule,
+	}
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			score := int64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, state.tolerationsPreferNoSchedule))
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score) / float64(r.Ns)))
+		}
+	}
+}
+
+func getAllTolerationPreferNoSchedule(tolerations []v1.Toleration) (tolerationList []v1.Toleration) {
+	for _, toleration := range tolerations {
+		if len(toleration.Effect) == 0 || toleration.Effect == v1.TaintEffectPreferNoSchedule {
+			tolerationList = append(tolerationList, toleration)
+		}
+	}
+	return
+}
+
+func countIntolerableTaintsPreferNoSchedule(taints []v1.Taint, tolerations []v1.Toleration) (intolerableTaints int) {
+	for _, taint := range taints {
+		if taint.Effect != v1.TaintEffectPreferNoSchedule {
+			continue
+		}
+
+		if !tolerationsTolerateTaint(tolerations, &taint) {
+			intolerableTaints++
+		}
+	}
+	return
+}
+
+func tolerationsTolerateTaint(tolerations []v1.Toleration, taint *v1.Taint) bool {
+	for i := range tolerations {
+		if tolerations[i].ToleratesTaint(taint) {
+			return true
+		}
+	}
+	return false
+}
+
+type SelectorSpread struct {
+	services               corelisters.ServiceLister
+	replicationControllers corelisters.ReplicationControllerLister
+	replicaSets            appslisters.ReplicaSetLister
+	statefulSets           appslisters.StatefulSetLister
+}
+
+var (
+	rcKind = v1.SchemeGroupVersion.WithKind("ReplicationController")
+	rsKind = appsv1.SchemeGroupVersion.WithKind("ReplicaSet")
+	ssKind = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
+)
+
+func (pl SelectorSpread) Name() string {
+	return "SelectorSpread"
+}
+
+func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#3.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl SelectorSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	if skipSelectorSpread(newPod.Pod) {
+		return
+	}
+	selector := DefaultSelector(
+		newPod.Pod,
+		pl.services,
+		pl.replicationControllers,
+		pl.replicaSets,
+		pl.statefulSets,
+	)
+	state := &preScoreState3{
+		selector: selector,
+	}
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			count := countMatchingPods(newPod.Pod.Namespace, state.selector, nodeinfo)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count / r.Ns)))
+		}
+	}
+}
+
+func skipSelectorSpread(pod *v1.Pod) bool {
+	return len(pod.Spec.TopologySpreadConstraints) != 0
+}
+
+func GetPodServices(sl corelisters.ServiceLister, pod *v1.Pod) ([]*v1.Service, error) {
+	allServices, err := sl.Services(pod.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	var services []*v1.Service
+	for i := range allServices {
+		service := allServices[i]
+		if service.Spec.Selector == nil {
+			continue
+		}
+		selector := labels.Set(service.Spec.Selector).AsSelectorPreValidated()
+		if selector.Matches(labels.Set(pod.Labels)) {
+			services = append(services, service)
+		}
+	}
+
+	return services, nil
+}
+
+func countMatchingPods(namespace string, selector labels.Selector, nodeInfo *r.NodeInfo) int {
+	if len(nodeInfo.Pods) == 0 || selector.Empty() {
+		return 0
+	}
+	count := 0
+	for _, p := range nodeInfo.Pods {
+		if namespace == p.Pod.Namespace && p.Pod.DeletionTimestamp == nil {
+			if selector.Matches(labels.Set(p.Pod.Labels)) {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+type InterPodAffinity struct {
+	nsLister listersv1.NamespaceLister
+	args     InterPodAffinityArgs
+}
+
+type InterPodAffinityArgs struct {
+	metav1.TypeMeta
+	HardPodAffinityWeight int32
+}
+
+func (pl InterPodAffinity) Name() string {
+	return "InterPodAffinity"
+}
+
+func (pl InterPodAffinity) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#4.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl *InterPodAffinity) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*preScoreState4, error) {
+	affinity := newPod.Pod.Spec.Affinity
+	hasPreferredAffinityConstraints := affinity != nil && affinity.PodAffinity != nil && len(affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
+	hasPreferredAntiAffinityConstraints := affinity != nil && affinity.PodAntiAffinity != nil && len(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
+
+	state := &preScoreState4{
+		topologyScore: make(map[string]map[string]int64),
+	}
+
+	state.podInfo = newPod.PodInfo
+
+	for i := range state.podInfo.PreferredAffinityTerms {
+		if err := pl.mergeAffinityTermNamespacesIfNotEmpty(&state.podInfo.PreferredAffinityTerms[i].AffinityTerm); err != nil {
+			return nil, fmt.Errorf("updating PreferredAffinityTerms: %w", err)
+		}
+	}
+	for i := range state.podInfo.PreferredAntiAffinityTerms {
+		if err := pl.mergeAffinityTermNamespacesIfNotEmpty(&state.podInfo.PreferredAntiAffinityTerms[i].AffinityTerm); err != nil {
+			return nil, fmt.Errorf("updating PreferredAntiAffinityTerms: %w", err)
+		}
+	}
+	state.namespaceLabels = GetNamespaceLabelsSnapshot(newPod.Pod.Namespace, pl.nsLister)
+
+	topoScores := make([]scoreMap, cache.AvailableNodeCount)
+	index := int32(-1)
+	for _, nodeinfo := range cache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			podsToProcess := nodeinfo.PodsWithAffinity
+			if hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints {
+				podsToProcess = nodeinfo.Pods
+			}
+
+			topoScore := make(scoreMap)
+			for _, existingPod := range podsToProcess {
+				pl.processExistingPod(state, existingPod, nodeinfo, newPod.Pod, topoScore)
+			}
+			if len(topoScore) > 0 {
+				topoScores[atomic.AddInt32(&index, 1)] = topoScore
+			}
+		}
+	}
+
+	for i := 0; i <= int(index); i++ {
+		state.topologyScore.append(topoScores[i])
+	}
+
+	return state, nil
+}
+
+func (pl InterPodAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	state, err := pl.PreScore(nodeInfoCache, newPod)
+	if err != nil {
+		fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
+		return
+	}
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			var score int64
+			for tpKey, tpValues := range state.topologyScore {
+				if v, exist := nodeinfo.Node().Labels[tpKey]; exist {
+					score += tpValues[v]
+				}
+			}
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score) / float64(r.Ns)))
+		}
+	}
+
+}
+
+func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *r.AffinityTerm) error {
+	if at.NamespaceSelector.Empty() {
+		return nil
+	}
+	ns, err := pl.nsLister.List(at.NamespaceSelector)
+	if err != nil {
+		return err
+	}
+	for _, n := range ns {
+		at.Namespaces.Insert(n.Name)
+	}
+	at.NamespaceSelector = labels.Nothing()
+	return nil
+}
+
+func GetNamespaceLabelsSnapshot(ns string, nsLister listersv1.NamespaceLister) (nsLabels labels.Set) {
+	podNS, err := nsLister.Get(ns)
+	if err == nil {
+		return labels.Merge(podNS.Labels, nil)
+	}
+	return
+}
+
+func (pl *InterPodAffinity) processExistingPod(
+	state *preScoreState4,
+	existingPod *r.PodInfo,
+	existingPodNodeInfo *r.NodeInfo,
+	incomingPod *v1.Pod,
+	topoScore scoreMap,
+) {
+	existingPodNode := existingPodNodeInfo.Node()
+	if len(existingPodNode.Labels) == 0 {
+		return
+	}
+
+	topoScore.processTerms(state.podInfo.PreferredAffinityTerms, existingPod.Pod, nil, existingPodNode, 1)
+
+	topoScore.processTerms(state.podInfo.PreferredAntiAffinityTerms, existingPod.Pod, nil, existingPodNode, -1)
+
+	if pl.args.HardPodAffinityWeight > 0 && len(existingPodNode.Labels) != 0 {
+		for _, t := range existingPod.RequiredAffinityTerms {
+			topoScore.processTerm(&t, pl.args.HardPodAffinityWeight, incomingPod, state.namespaceLabels, existingPodNode, 1)
+		}
+	}
+
+	topoScore.processTerms(existingPod.PreferredAffinityTerms, incomingPod, state.namespaceLabels, existingPodNode, 1)
+
+	topoScore.processTerms(existingPod.PreferredAntiAffinityTerms, incomingPod, state.namespaceLabels, existingPodNode, -1)
+}
+
+func (m scoreMap) append(other scoreMap) {
+	for topology, oScores := range other {
+		scores := m[topology]
+		if scores == nil {
+			m[topology] = oScores
+			continue
+		}
+		for k, v := range oScores {
+			scores[k] += v
+		}
+	}
+}
+
+func (m scoreMap) processTerms(terms []r.WeightedAffinityTerm, pod *v1.Pod, nsLabels labels.Set, node *v1.Node, multiplier int32) {
+	for _, term := range terms {
+		m.processTerm(&term.AffinityTerm, term.Weight, pod, nsLabels, node, multiplier)
+	}
+}
+
+func (m scoreMap) processTerm(term *r.AffinityTerm, weight int32, pod *v1.Pod, nsLabels labels.Set, node *v1.Node, multiplier int32) {
+	if term.Matches(pod, nsLabels) {
+		if tpValue, tpValueExist := node.Labels[term.TopologyKey]; tpValueExist {
+			if m[term.TopologyKey] == nil {
+				m[term.TopologyKey] = make(map[string]int64)
+			}
+			m[term.TopologyKey][tpValue] += int64(weight * multiplier)
+		}
+	}
+}
+
+type PodTopologySpread struct {
+	systemDefaulted                     bool
+	enableMinDomainsInPodTopologySpread bool
+	defaultConstraints                  []v1.TopologySpreadConstraint
+	services                            corelisters.ServiceLister
+	replicationCtrls                    corelisters.ReplicationControllerLister
+	replicaSets                         appslisters.ReplicaSetLister
+	statefulSets                        appslisters.StatefulSetLister
+}
+
+func (pl PodTopologySpread) Name() string {
+	return "PodTopologySpread"
+}
+
+func (pl PodTopologySpread) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#5.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl *PodTopologySpread) initPreScoreState(s *preScoreState5, pod *v1.Pod, cache *r.NodeCache, requireAllTopologies bool) error {
+	var err error
+	if len(pod.Spec.TopologySpreadConstraints) > 0 {
+		s.Constraints, err = filterTopologySpreadConstraints(pod.Spec.TopologySpreadConstraints, v1.ScheduleAnyway, pl.enableMinDomainsInPodTopologySpread)
+		if err != nil {
+			return fmt.Errorf("obtaining pod's soft topology spread constraints: %w", err)
+		}
+	} else {
+		s.Constraints, err = pl.buildDefaultConstraints(pod, v1.ScheduleAnyway)
+		if err != nil {
+			return fmt.Errorf("setting default soft topology spread constraints: %w", err)
+		}
+	}
+	if len(s.Constraints) == 0 {
+		return nil
+	}
+	topoSize := make([]int, len(s.Constraints))
+	for _, node := range cache.NodeInfoList {
+		if !node.PluginResult.IsFiltered {
+			if requireAllTopologies && !nodeLabelsMatchSpreadConstraints(node.Node().Labels, s.Constraints) {
+				s.IgnoredNodes.Insert(node.Node().Name)
+				continue
+			}
+			for i, constraint := range s.Constraints {
+				if constraint.TopologyKey == v1.LabelHostname {
+					continue
+				}
+				pair := topologyPair{key: constraint.TopologyKey, value: node.Node().Labels[constraint.TopologyKey]}
+				if s.TopologyPairToPodCounts[pair] == nil {
+					s.TopologyPairToPodCounts[pair] = new(int64)
+					topoSize[i]++
+				}
+			}
+		}
+	}
+
+	s.TopologyNormalizingWeight = make([]float64, len(s.Constraints))
+	for i, c := range s.Constraints {
+		sz := topoSize[i]
+		if c.TopologyKey == v1.LabelHostname {
+			sz = cache.AvailableNodeCount - len(s.IgnoredNodes)
+		}
+		s.TopologyNormalizingWeight[i] = topologyNormalizingWeight(sz)
+	}
+	return nil
+}
+
+func (pl *PodTopologySpread) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*preScoreState5, error) {
+	state := &preScoreState5{
+		IgnoredNodes:            sets.NewString(),
+		TopologyPairToPodCounts: make(map[topologyPair]*int64),
+	}
+
+	requireAllTopologies := len(newPod.Pod.Spec.TopologySpreadConstraints) > 0 || !pl.systemDefaulted
+	err := pl.initPreScoreState(state, newPod.Pod, cache, requireAllTopologies)
+	if err != nil {
+		return nil, fmt.Errorf("calculating preScoreState: %w", err)
+	}
+
+	if len(state.Constraints) == 0 {
+		return state, nil
+	}
+	requiredNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(newPod.Pod)
+	for _, nodeinfo := range cache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			match, _ := requiredNodeAffinity.Match(nodeinfo.Node())
+			if !match || (requireAllTopologies && !nodeLabelsMatchSpreadConstraints(nodeinfo.Node().Labels, state.Constraints)) {
+				continue
+			}
+
+			for _, c := range state.Constraints {
+				pair := topologyPair{key: c.TopologyKey, value: nodeinfo.Node().Labels[c.TopologyKey]}
+				tpCount := state.TopologyPairToPodCounts[pair]
+				if tpCount == nil {
+					continue
+				}
+				count := countPodsMatchSelector(nodeinfo.Pods, c.Selector, newPod.Pod.Namespace)
+				atomic.AddInt64(tpCount, int64(count))
+			}
+		}
+	}
+
+	return state, nil
+}
+
+func (pl PodTopologySpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			state, err := pl.PreScore(nodeInfoCache, newPod)
+			if err != nil {
+				fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
+				return
+			}
+			if state.IgnoredNodes.Has(nodeinfo.Node().Name) {
+				continue
+			}
+
+			var score float64
+			for i, c := range state.Constraints {
+				if tpVal, ok := nodeinfo.Node().Labels[c.TopologyKey]; ok {
+					var cnt int64
+					if c.TopologyKey == v1.LabelHostname {
+						cnt = int64(countPodsMatchSelector(nodeinfo.Pods, c.Selector, newPod.Pod.Namespace))
+					} else {
+						pair := topologyPair{key: c.TopologyKey, value: tpVal}
+						cnt = *state.TopologyPairToPodCounts[pair]
+					}
+					score += scoreForCount(cnt, c.MaxSkew, state.TopologyNormalizingWeight[i])
+				}
+			}
+			score = math.Round(score)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(score / float64(r.Ns)))
+		}
+	}
+}
+
+func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
+	return float64(cnt)*tpWeight + float64(maxSkew-1)
+}
+
+func nodeLabelsMatchSpreadConstraints(nodeLabels map[string]string, constraints []topologySpreadConstraint) bool {
+	for _, c := range constraints {
+		if _, ok := nodeLabels[c.TopologyKey]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func countPodsMatchSelector(podInfos []*r.PodInfo, selector labels.Selector, ns string) int {
+	count := 0
+	for _, p := range podInfos {
+		if p.Pod.DeletionTimestamp != nil || p.Pod.Namespace != ns {
+			continue
+		}
+		if selector.Matches(labels.Set(p.Pod.Labels)) {
+			count++
+		}
+	}
+	return count
+}
+
+func topologyNormalizingWeight(size int) float64 {
+	return math.Log(float64(size + 2))
+}
+
+func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
+	constraints, err := filterTopologySpreadConstraints(pl.defaultConstraints, action, pl.enableMinDomainsInPodTopologySpread)
+	if err != nil || len(constraints) == 0 {
+		return nil, err
+	}
+	selector := DefaultSelector(p, pl.services, pl.replicationCtrls, pl.replicaSets, pl.statefulSets)
+	if selector.Empty() {
+		return nil, nil
+	}
+	for i := range constraints {
+		constraints[i].Selector = selector
+	}
+	return constraints, nil
+}
+
+func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, action v1.UnsatisfiableConstraintAction, enableMinDomainsInPodTopologySpread bool) ([]topologySpreadConstraint, error) {
+	var result []topologySpreadConstraint
+	for _, c := range constraints {
+		if c.WhenUnsatisfiable == action {
+			selector, err := metav1.LabelSelectorAsSelector(c.LabelSelector)
+			if err != nil {
+				return nil, err
+			}
+			tsc := topologySpreadConstraint{
+				MaxSkew:     c.MaxSkew,
+				TopologyKey: c.TopologyKey,
+				Selector:    selector,
+				MinDomains:  1,
+			}
+			if enableMinDomainsInPodTopologySpread && c.MinDomains != nil {
+				tsc.MinDomains = *c.MinDomains
+			}
+			result = append(result, tsc)
+		}
+	}
+	return result, nil
+}
+
+const (
+	mb                    int64 = 1024 * 1024
+	minThreshold          int64 = 23 * mb
+	maxContainerThreshold int64 = 1000 * mb
+)
+
+type ImageLocality struct{}
+
+func (pl ImageLocality) Name() string {
+	return "ImageLocality"
+}
+
+func (pl ImageLocality) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#6.", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl ImageLocality) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			nodeScore := int(0)
+			nodeScore = int(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(nodeScore / r.Ns)))
+		}
+	}
+}
+
+func sumImageScores(nodeInfo *r.NodeInfo, containers []corev1.Container, totalNumNodes int) int64 {
+	var sum int64
+	for _, container := range containers {
+		if state, ok := nodeInfo.ImageStates[normalizedImageName(container.Image)]; ok {
+			sum += scaledImageScore(state, totalNumNodes)
+		}
+	}
+	return sum
+}
+
+func calculatePriority(sumScores int64, numContainers int) int64 {
+	maxThreshold := maxContainerThreshold * int64(numContainers)
+	if sumScores < minThreshold {
+		sumScores = minThreshold
+	} else if sumScores > maxThreshold {
+		sumScores = maxThreshold
+	}
+
+	return int64(r.MaxScore) * (sumScores - minThreshold) / (maxThreshold - minThreshold)
+}
+
+func normalizedImageName(name string) string {
+	if strings.LastIndex(name, ":") <= strings.LastIndex(name, "/") {
+		name = name + ":latest"
+	}
+	return name
+}
+
+func scaledImageScore(imageState *r.ImageStateSummary, totalNumNodes int) int64 {
+	spread := float64(imageState.NumNodes) / float64(totalNumNodes)
+	return int64(float64(imageState.Size) * spread)
+}
+
+type NodeResourcesFit struct{}
+
+func (pl NodeResourcesFit) Name() string {
+	return "NodeResourcesFit"
+}
+
+func (pl NodeResourcesFit) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#7. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl NodeResourcesFit) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			allocatable := nodeinfo.Allocatable
+			requested := newPod.RequestedResource
+			nodeScore := float64(0)
+
+			if (allocatable.MilliCPU == 0) || (allocatable.MilliCPU < requested.MilliCPU) {
+				continue
+			} else {
+				nodeScore += float64(allocatable.MilliCPU-requested.MilliCPU) / float64(allocatable.MilliCPU) * 40
+			}
+			if (allocatable.Memory == 0) || (allocatable.Memory < requested.Memory) {
+				continue
+			} else {
+				nodeScore += float64(allocatable.Memory-requested.Memory) / float64(allocatable.Memory) * 40
+			}
+			if (allocatable.EphemeralStorage == 0) || (allocatable.EphemeralStorage < requested.EphemeralStorage) {
+				continue
+			} else {
+				nodeScore += float64(allocatable.EphemeralStorage-requested.EphemeralStorage) / float64(allocatable.EphemeralStorage) * 20
+			}
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
+
+		}
+	}
+}
+
+type BalancedNodeResourceAllocation struct{}
+
+func (pl BalancedNodeResourceAllocation) Name() string {
+	return "BalancedNodeResourceAllocation"
+}
+
+func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#8. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			allocable := nodeinfo.Allocatable
+			requested := newPod.RequestedResource
+			nodeScore := float64(0)
+
+			cpuFraction := fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU)
+			memoryFraction := fractionOfCapacity(requested.Memory, allocable.Memory)
+			volumeFraction := fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage)
+			if cpuFraction >= 1 || memoryFraction >= 1 || volumeFraction >= 1 {
+				nodeScore = 0
+			} else {
+				mean := (cpuFraction + memoryFraction + volumeFraction) / float64(3)
+				variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) + ((memoryFraction - mean) * (memoryFraction - mean)) + ((volumeFraction - mean) * (volumeFraction - mean))) / float64(3))
+				nodeScore = (1 - variance) * 100
+			}
+
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
+
+		}
+	}
+
+}
+
+func fractionOfCapacity(req, cap int64) float64 {
+	if cap == 0 {
+		return 1
+	}
+	return float64(req) / float64(cap)
+}
+
+type VolumeBinding struct{}
+
+func (pl VolumeBinding) Name() string {
+	return "VolumeBinding"
+}
+
+func (pl VolumeBinding) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#9. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl VolumeBinding) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			nodeScore := float64(100)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
+		}
+	}
+
+}
+
+type NodeMetricBasedScoring struct{}
+
+func (pl NodeMetricBasedScoring) Name() string {
+	return "NodeMetricBasedScoring"
+}
+
+func (pl NodeMetricBasedScoring) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#10. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+		}
+	}
+}
+
+func (pl NodeMetricBasedScoring) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			nodeScore := float64(100)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore / float64(r.Ns)))
+		}
+	}
+
+}
+
+type SetGPUFlopsScore struct{}
+
+func (pl SetGPUFlopsScore) Name() string {
+	return "SetGPUFlopsScore"
+}
+
+func (pl SetGPUFlopsScore) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#11. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl SetGPUFlopsScore) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := gpu.GPUFlops / 1000
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+				}
+			}
+
+		}
+	}
+
+}
+
+type AllocatedPodCountInGPU struct{}
+
+func (pl AllocatedPodCountInGPU) Name() string {
+	return "AllocatedPodCountInGPU"
+}
+
+func (pl AllocatedPodCountInGPU) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#12. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl AllocatedPodCountInGPU) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := float64(1 * gpu.PodCount)
+					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) - gpuScore
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(gpuScore, 0))
+				}
+			}
+		}
+	}
+}
+
+type GPUUtilization struct{}
+
+func (pl GPUUtilization) Name() string {
+	return "GPUUtilization"
+}
+
+func (pl GPUUtilization) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#13. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl GPUUtilization) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := float64((200 - gpu.GPUUtil) / 200)
+					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+				}
+			}
+		}
+	}
+}
+
+type GPUMemoryUsage struct{}
+
+func (pl GPUMemoryUsage) Name() string {
+	return "GPUMemoryUsage"
+}
+
+func (pl GPUMemoryUsage) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#14. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl GPUMemoryUsage) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal)
+					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+				}
+			}
+		}
+	}
+}
+
+type GPUMerticBased struct{}
+
+func (pl GPUMerticBased) Name() string {
+	return "GPUMerticBased"
+}
+
+func (pl GPUMerticBased) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#15. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl GPUMerticBased) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, _ := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := float64(100)
+					nodeinfo.PluginResult.GPUScores[j].GPUScore += int(math.Round(gpuScore / float64(r.Gs)))
+				}
+			}
+		}
+	}
+}
+
+type GPUTemperature struct{}
+
+func (pl GPUTemperature) Name() string {
+	return "GPUTemperature"
+}
+
+func (pl GPUTemperature) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#16 Scoring > ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl GPUTemperature) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuTemp := gpu.GPUTemperature
+					if 61 < gpuTemp && gpuTemp < 85 {
+						nodeinfo.PluginResult.GPUScores[j].GPUScore -= 3
+					} else if 86 < gpuTemp && gpuTemp < 94 {
+						nodeinfo.PluginResult.GPUScores[j].GPUScore -= 8
+					} else if 95 < gpuTemp {
+						temp := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore - 100)
+						nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(temp, 0))
+					}
+				}
+			}
+		}
+	}
+}
+
+type GPUPower struct{}
+
+func (pl GPUPower) Name() string {
+	return "GPUPower"
+}
+
+func (pl GPUPower) Debugg(nodeInfoCache *r.NodeCache) {
+	fmt.Println("#17. ", pl.Name())
+	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
+		if !nodeInfo.PluginResult.IsFiltered {
+			for _, gpu := range nodeInfo.PluginResult.GPUScores {
+				if !gpu.IsFiltered {
+					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+				}
+			}
+		}
+	}
+}
+
+func (pl GPUPower) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			for j, gpu := range nodeinfo.GPUMetrics {
+				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+					gpuScore := float64((gpu.GPUPowerTotal - gpu.GPUPowerUsed) / gpu.GPUPowerTotal)
+					if gpuScore < 10000 {
+						temp := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * 0.9
+						nodeinfo.PluginResult.GPUScores[j].GPUScore = int(temp)
+					}
+				}
+			}
+		}
+	}
+}
+
+type preScoreState1 struct {
+	preferredNodeAffinity *nodeaffinity.PreferredSchedulingTerms
+}
+
+type preScoreState2 struct {
+	tolerationsPreferNoSchedule []v1.Toleration
+}
+
+type preScoreState3 struct {
+	selector labels.Selector
+}
+
+type preScoreState4 struct {
+	topologyScore   scoreMap
+	podInfo         *r.PodInfo
+	namespaceLabels labels.Set
+}
+type scoreMap map[string]map[string]int64
+
+type preScoreState5 struct {
+	Constraints               []topologySpreadConstraint
+	IgnoredNodes              sets.String
+	TopologyPairToPodCounts   map[topologyPair]*int64
+	TopologyNormalizingWeight []float64
+}
+type topologySpreadConstraint struct {
+	MaxSkew     int32
+	TopologyKey string
+	Selector    labels.Selector
+	MinDomains  int32
+}
+type topologyPair struct {
+	key   string
+	value string
+}
+
+func DefaultNormalizeScore(maxPriority int64, reverse bool, nodeinfolist []*r.NodeInfo) bool {
+	var maxCount int64
+	for _, nodeinfo := range nodeinfolist {
+		if !nodeinfo.PluginResult.IsFiltered {
+			if int64(nodeinfo.PluginResult.NodeScore) > maxCount {
+				maxCount = int64(nodeinfo.PluginResult.NodeScore)
+			}
+		}
+	}
+
+	if maxCount == 0 {
+		if reverse {
+			for _, nodeinfo := range nodeinfolist {
+				if !nodeinfo.PluginResult.IsFiltered {
+					nodeinfo.PluginResult.NodeScore = int(maxPriority)
+				}
+			}
+		}
+		return true
+	}
+
+	for _, nodeinfo := range nodeinfolist {
+		if !nodeinfo.PluginResult.IsFiltered {
+			score := int64(nodeinfo.PluginResult.NodeScore)
+			score = maxPriority * score / maxCount
+			if reverse {
+				score = maxPriority - score
+			}
+			nodeinfo.PluginResult.NodeScore = int(score)
+
+		}
+	}
+
+	return true
+}
+
+func DefaultSelector(
+	pod *v1.Pod,
+	sl corelisters.ServiceLister,
+	cl corelisters.ReplicationControllerLister,
+	rsl appslisters.ReplicaSetLister,
+	ssl appslisters.StatefulSetLister,
+) labels.Selector {
+	labelSet := make(labels.Set)
+
+	if services, err := GetPodServices(sl, pod); err == nil {
+		for _, service := range services {
+			labelSet = labels.Merge(labelSet, service.Spec.Selector)
+		}
+	}
+	selector := labelSet.AsSelector()
+
+	owner := metav1.GetControllerOfNoCopy(pod)
+	if owner == nil {
+		return selector
+	}
+
+	gv, err := schema.ParseGroupVersion(owner.APIVersion)
+	if err != nil {
+		return selector
+	}
+
+	gvk := gv.WithKind(owner.Kind)
+	switch gvk {
+	case rcKind:
+		if rc, err := cl.ReplicationControllers(pod.Namespace).Get(owner.Name); err == nil {
+			labelSet = labels.Merge(labelSet, rc.Spec.Selector)
+			selector = labelSet.AsSelector()
+		}
+	case rsKind:
+		if rs, err := rsl.ReplicaSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	case ssKind:
+		if ss, err := ssl.StatefulSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(ss.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	default:
+	}
+
+	return selector
+}
