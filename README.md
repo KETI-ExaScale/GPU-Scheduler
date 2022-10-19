@@ -1,6 +1,6 @@
 # GPU Scheduler
 **Contents**
-- [1.Introduction-of-GPU-Scheduler](#ntroduction-of-GPU-Scheduler)
+- [1.Introduction-of-GPU-Scheduler](#1.introduction-of-GPU-Scheduler)
 - [2.Environment](#environment)
 - [3.Installation](#installation)
 ----
