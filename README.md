@@ -10,7 +10,7 @@ It implements GPU sharing between containers and supports the MPS operation of G
 #### Main Function
 - GPU resource sharing within one node.
 - GPU-Metric-Collector's Resource monitoring-based scheduling.
-#### required module
+#### Required Module
 - *[GPU-Metric-Collector](https://github.com/KETI-ExaScale/GPU-Metric-Collector)*
 - *[GPU-Device-Plugin](https://github.com/KETI-ExaScale/GPU-Device-Plugin)*
 - *[KETI-Cluster-Manager](https://github.com/KETI-ExaScale/KETI-Cluster-Manager)*
