@@ -1,13 +1,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: kjhtest-nbody-benchmark-mps
+  name: nbody-benchmark-mps-test
   namespace: userpod
 spec:
   template:
     # metadata:
     #   annotations:
-    #     clusterName: keti-gpu-cluster2
+    #     clusterName: gpu1
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler
@@ -18,13 +18,14 @@ spec:
             - nbody
             - -benchmark
             - -numdevices=1
-            - -numbodies=198200
+            - -numbodies=1982000
           resources:
             limits:
               keti.com/mpsgpu: 1
+              cpu: "250m"
+              memory: "6400Mi"
             requests:
               cpu: "250m"
-              memory: "5000Mi"
           volumeMounts:
             - name: nvidia-mps
               mountPath: /tmp/nvidia-mps 

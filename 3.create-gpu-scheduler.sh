@@ -1,1 +1,0 @@
-kubectl apply -f deployments/keti-gpu-scheduler.yaml

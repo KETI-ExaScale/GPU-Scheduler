@@ -41,7 +41,7 @@ kind: Deployment
 metadata:
   labels:
     app: gpu-scheduler
-  name: gpu-scheduler
+  name: keti-gpu-scheduler
   namespace: gpu
 spec:
   selector:
@@ -59,7 +59,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/gpu-scheduler:v0.251
+          image: ketidevit2/keti-gpu-scheduler:v0.251
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
