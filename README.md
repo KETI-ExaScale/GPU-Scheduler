@@ -1,10 +1,10 @@
 # GPU Scheduler
 **Contents**
-- [1.Introduction-of-GPU-Scheduler](#1-introduction-of-GPU-Scheduler)
-- [2.Environment](#2-environment)
-- [3.Installation](#3-installation)
+- [1.Introduction-of-GPU-Scheduler](#1introduction-of-gpu-scheduler)
+- [2.Environment](#2environment)
+- [3.Installation](#3installation)
 ----
-## 1.Introduction-of-GPU-Scheduler
+## 1.Introduction of GPU Scheduler
 GPU resource scheduler that helps schedule kubernetes-based GPU application containers.<br>
 It implements GPU sharing between containers and supports the MPS operation of GPUs.
 #### Main Function
