@@ -40,7 +40,7 @@ func (pl InterPodAffinity) Name() string {
 }
 
 func (pl InterPodAffinity) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#4.", pl.Name())
+	fmt.Println("S#4. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)

@@ -17,7 +17,6 @@ limitations under the License.
 package resourceinfo
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -99,21 +98,6 @@ type ClusterEvent struct {
 func (ce ClusterEvent) IsWildCard() bool {
 	return ce.Resource == WildCard && ce.ActionType == All
 }
-
-// type _ClusterInfo struct {
-// 	HostConfig     *rest.Config
-// 	HostKubeClient *kubernetes.Clientset
-// }
-
-// func NewClusterInfo() *_ClusterInfo {
-// 	hostConfig, _ := rest.InClusterConfig()
-// 	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
-
-// 	return &_ClusterInfo{
-// 		HostConfig:     hostConfig,
-// 		HostKubeClient: hostKubeClient,
-// 	}
-// }
 
 type ScheduleResult struct {
 	BestNode   string
@@ -206,12 +190,14 @@ func (gs *GPUScore) InitGPUScore(uuid string) {
 	gs.IsSelected = false
 }
 
-func (pr *PluginResult) FilterNode(stage string) {
+func (pr *PluginResult) FilterNode(node string, stage string) {
+	fmt.Printf("- node {%s} filtered, stage = %s", node, stage)
 	pr.IsFiltered = true
 	pr.FilteredStage = stage
 }
 
-func (gs *GPUScore) FilterGPU(stage string) {
+func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
+	fmt.Printf("- node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage)
 	gs.IsFiltered = true
 	gs.FilteredStage = stage
 }
@@ -219,40 +205,41 @@ func (gs *GPUScore) FilterGPU(stage string) {
 type QueuedPodInfo struct {
 	PodUID types.UID
 	*PodInfo
-	Timestamp               time.Time   //큐에 들어온 시간
-	Attempts                int         //스케줄링 시도 횟수
-	InitialAttemptTimestamp time.Time   //큐에 최초로 들어온 시간
-	UnschedulablePlugins    sets.String //실패한 단계의 이름
+	Timestamp               time.Time //큐에 들어온 시간
+	Attempts                int       //스케줄링 시도 횟수
+	InitialAttemptTimestamp time.Time //큐에 최초로 들어온 시간
+	UnschedulablePlugins    []string  //실패한 단계의 이름
 	activate                bool
 	TargetCluster           string
 	FilteredCluster         []string
 }
 
 func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
-	if pod == nil { //Init Cluster Manager 용
+	if pod == nil { //Cluster Manager Init Pod
 		return &QueuedPodInfo{
 			PodUID:                  "",
 			PodInfo:                 NewInitPodInfo(),
 			Timestamp:               time.Now(),
 			Attempts:                0,
 			InitialAttemptTimestamp: time.Now(),
+			UnschedulablePlugins:    nil,
+			activate:                true,
+			TargetCluster:           "",
+			FilteredCluster:         nil,
+		}
+	} else {
+		return &QueuedPodInfo{ // Schedule Pod
+			PodUID:                  pod.UID,
+			PodInfo:                 GetNewPodInfo(pod),
+			Timestamp:               time.Now(),
+			Attempts:                0,
+			InitialAttemptTimestamp: time.Now(),
+			UnschedulablePlugins:    nil,
 			activate:                true,
 			TargetCluster:           "",
 			FilteredCluster:         nil,
 		}
 	}
-
-	return &QueuedPodInfo{
-		PodUID:                  pod.UID,
-		PodInfo:                 GetNewPodInfo(pod),
-		Timestamp:               time.Now(),
-		Attempts:                0,
-		InitialAttemptTimestamp: time.Now(),
-		activate:                true,
-		TargetCluster:           "",
-		FilteredCluster:         nil,
-	}
-
 }
 
 func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
@@ -262,12 +249,18 @@ func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
 		Timestamp:               qpi.Timestamp,
 		Attempts:                qpi.Attempts,
 		InitialAttemptTimestamp: qpi.InitialAttemptTimestamp,
+		UnschedulablePlugins:    qpi.UnschedulablePlugins,
 		activate:                qpi.activate,
 		TargetCluster:           qpi.TargetCluster,
 	}
 }
 
+func (qpi *QueuedPodInfo) FilterNode(stage string) {
+	qpi.UnschedulablePlugins = append(qpi.UnschedulablePlugins, stage)
+}
+
 func (qpi *QueuedPodInfo) Activate() {
+	qpi.UnschedulablePlugins = nil
 	qpi.Timestamp = time.Now()
 	qpi.Attempts++
 }
@@ -285,14 +278,15 @@ type PodInfo struct {
 }
 
 func NewInitPodInfo() *PodInfo {
-	cpu := "250m"
-	memory := "5000Mi"
+	cpu := "500m"
+	memory := "1Gi"
 	cpuQuentity := resource.MustParse(cpu)
 	cpuMillivalue := int64(cpuQuentity.MilliValue())
 	memoryQuentity := resource.MustParse(memory)
 	memoryValue := int64(memoryQuentity.Value())
 	res := &PodResource{cpuMillivalue, memoryValue, 0, 1, 0, 0}
 	// &PodResource{MilliCPU Memory EphemeralStorage GPUCount GPUMemoryLimit GPUMemoryRequest}
+	fmt.Println("<test> res: ", res)
 	return &PodInfo{
 		Pod:                        nil,
 		RequiredAffinityTerms:      nil,
@@ -576,17 +570,15 @@ type NodeInfo struct {
 	UsedPorts                    HostPortInfo
 	ImageStates                  map[string]*ImageStateSummary
 	PVCRefCounts                 map[string]int
-	GRPCHost                     string
+	MetricCollectorIP            string
 	NodeMetric                   *NodeMetric
 	GPUMetrics                   map[string]*GPUMetric
 	IsGPUNode                    bool
-	// TotalGPUCount                int64
-	PluginResult   *PluginResult
-	Requested      *Resource
-	Allocatable    *Resource
-	ReservePodList sets.String
-	Avaliavle      bool
-	// NonZeroRequested             *Resource
+	PluginResult                 *PluginResult
+	Requested                    *Resource
+	Allocatable                  *Resource
+	ReservePodList               sets.String
+	// Avaliable                    bool // PluginResult.IsFiltered로 판별가능 -> Metric Collector가 있는지 여부로 초기화시 결정
 }
 
 // Node returns overall information about this node.
@@ -606,16 +598,16 @@ func NewNodeInfo() *NodeInfo {
 		UsedPorts:                    make(HostPortInfo),
 		ImageStates:                  make(map[string]*ImageStateSummary),
 		PVCRefCounts:                 make(map[string]int),
-		GRPCHost:                     "",
+		MetricCollectorIP:            "",
 		NodeMetric:                   NewNodeMetric(),
 		GPUMetrics:                   make(map[string]*GPUMetric),
 		IsGPUNode:                    true,
+		PluginResult:                 NewPluginResult(),
+		Requested:                    &Resource{},
+		Allocatable:                  &Resource{},
+		ReservePodList:               sets.NewString(),
+		// Avaliable:                    false,
 		// TotalGPUCount:                0,
-		PluginResult:   NewPluginResult(),
-		Requested:      &Resource{},
-		Allocatable:    &Resource{},
-		ReservePodList: sets.NewString(),
-		Avaliavle:      true,
 		// NonZeroRequested:             &Resource{},
 	}
 }
@@ -659,27 +651,26 @@ func (n *NodeInfo) SetNode(node *corev1.Node) {
 	n.Allocatable = NewResource(node.Status.Allocatable)
 }
 
-func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Clientset) error {
+func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Clientset) {
 	//grpchost
 	ip := GetMetricCollectorIP(n.Pods)
-	n.GRPCHost = ip
+	n.MetricCollectorIP = ip
 
 	//pluginresult
 	n.PluginResult = NewPluginResult()
 
-	//init node,gpu metric
-	err := n.GetInitMetric(ip)
-	if err != nil {
-		fmt.Println("get node {", node.Name, "} metric error!")
-		n.PluginResult.IsFiltered = true
-		return err
+	if ip == "" { // GPU Metric Collector 'Not' running in node
+		n.PluginResult.IsFiltered = true //node filtered
+	} else { // GPU Metric Collector running in node
+		err := n.GetInitMetric(ip) //init node, gpu metric
+		if err != nil {
+			fmt.Println("<error> Get Init Metric {", node.Name, "} error - ", err)
+			n.PluginResult.IsFiltered = true
+		}
+		// if isNonGPUNode(node) {
+		// 	n.IsGPUNode = false
+		// }
 	}
-
-	if isNonGPUNode(node) {
-		n.IsGPUNode = false
-	}
-
-	return nil
 }
 
 //return whether the node is GPUNode or not
@@ -712,21 +703,14 @@ func (r *Resource) Add(rl v1.ResourceList) {
 		case v1.ResourcePods:
 			r.AllowedPodNumber += int(rQuant.Value())
 		case v1.ResourceEphemeralStorage:
-			// if utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) {
-			// if the local storage capacity isolation feature gate is disabled, pods request 0 disk.
 			r.EphemeralStorage += rQuant.Value()
-			// }
-			// default:
-			// 	if schedutil.IsScalarResourceName(rName) {
-			// 		r.AddScalar(rName, rQuant.Value())
-			// 	}
 		}
 	}
 }
 
 func GetMetricCollectorIP(pods []*PodInfo) string {
 	for _, pod := range pods {
-		if strings.HasPrefix(pod.Pod.Name, "keti-gpu-metric-collector") {
+		if strings.HasPrefix(pod.Pod.Name, "keti-gpu-metric-collector") && pod.Pod.Status.Phase == "Running" {
 			return pod.Pod.Status.PodIP
 		}
 	}
@@ -764,7 +748,7 @@ type NodeMetric struct {
 	TotalGPUCount int64
 	GPU_UUID      []string
 	MaxGPUMemory  int64
-	NVLinkList    []NVLink
+	NVLinkList    []*NVLink
 }
 
 func NewNodeMetric() *NodeMetric {
@@ -782,7 +766,7 @@ func NewNodeMetric() *NodeMetric {
 	}
 }
 
-func (nm NodeMetric) InitNVLinkList() {
+func (nm *NodeMetric) InitNVLinkList() {
 	for _, nvlink := range nm.NVLinkList {
 		nvlink.Score = 0
 		nvlink.IsFiltered = false
@@ -792,35 +776,53 @@ func (nm NodeMetric) InitNVLinkList() {
 
 // each GPU metric
 type GPUMetric struct {
-	GPUName        string
-	GPUIndex       int64
-	GPUPowerUsed   int64
-	GPUPowerTotal  int64
-	GPUMemoryTotal int64
-	GPUMemoryFree  int64
-	GPUMemoryUsed  int64
-	GPUTemperature int64
-	PodCount       int64
-	GPUFlops       int64
-	GPUArch        int64
-	GPUUtil        int64
+	GPUName             string
+	GPUIndex            int64
+	GPUPowerUsed        int64
+	GPUPowerTotal       int64
+	GPUMemoryTotal      int64
+	GPUMemoryFree       int64
+	GPUMemoryUsed       int64
+	GPUTemperature      int64
+	PodCount            int64
+	GPUFlops            int64
+	GPUArch             int64
+	GPUUtil             int64
+	GPUMaxOperativeTemp int64
+	GPUSlowdownTemp     int64
+	GPUShutdownTemp     int64
 }
 
 func NewGPUMetric() *GPUMetric {
 	return &GPUMetric{
-		GPUName:        "",
-		GPUIndex:       0,
-		GPUPowerUsed:   0,
-		GPUPowerTotal:  0,
-		GPUMemoryTotal: 0,
-		GPUMemoryFree:  0,
-		GPUMemoryUsed:  0,
-		GPUTemperature: 0,
-		PodCount:       0,
-		GPUFlops:       0,
-		GPUArch:        0,
-		GPUUtil:        0,
+		GPUName:             "",
+		GPUIndex:            0,
+		GPUPowerUsed:        0,
+		GPUPowerTotal:       0,
+		GPUMemoryTotal:      0,
+		GPUMemoryFree:       0,
+		GPUMemoryUsed:       0,
+		GPUTemperature:      0,
+		PodCount:            0,
+		GPUFlops:            0,
+		GPUArch:             0,
+		GPUUtil:             0,
+		GPUMaxOperativeTemp: 93,
+		GPUSlowdownTemp:     95,
+		GPUShutdownTemp:     98,
 	}
+}
+
+func (gm *GPUMetric) gpuPodCountDown() error {
+	if gm.PodCount == 0 {
+		return fmt.Errorf("gpu metric pod count = 0")
+	}
+	gm.PodCount--
+	return nil
+}
+
+func (gm *GPUMetric) gpuPodCountUp() {
+	gm.PodCount++
 }
 
 // Resource is a collection of compute resource.
@@ -895,14 +897,6 @@ type PodResource struct {
 // // 		}
 // // 	}
 // // }
-
-// // Node returns overall information about this node.
-// func (n *NodeInfo) Node() *corev1.Node {
-// 	if n == nil {
-// 		return nil
-// 	}
-// 	return n.node
-// }
 
 // // // Clone returns a copy of this node.
 // // func (n *NodeInfo) Clone() *NodeInfo {
@@ -1191,6 +1185,23 @@ func (n *NodeInfo) RemoveNode() {
 	n.node = nil
 }
 
+func (n *NodeInfo) gpuPodCountDown(pod *corev1.Pod) {
+	uuids := pod.ObjectMeta.Annotations["UUID"]
+	uuid_list := strings.Split(uuids, ",")
+
+	for _, uuid := range uuid_list {
+		n.GPUMetrics[uuid].gpuPodCountDown()
+	}
+}
+
+func (n *NodeInfo) gpuPodCountUp(uuids string) {
+	uuid_list := strings.Split(uuids, ",")
+
+	for _, uuid := range uuid_list {
+		n.GPUMetrics[uuid].gpuPodCountUp()
+	}
+}
+
 // // FilterOutPods receives a list of pods and filters out those whose node names
 // // are equal to the node of this NodeInfo, but are not found in the pods of this NodeInfo.
 // //
@@ -1227,11 +1238,13 @@ func (n *NodeInfo) RemoveNode() {
 
 // GetPodKey returns the string key of a pod.
 func GetPodKey(pod *corev1.Pod) (string, error) {
-	uid := string(pod.UID)
-	if len(uid) == 0 {
-		return "", errors.New("cannot get cache key for pod with empty UID")
-	}
-	return uid, nil
+	// uid := string(pod.UID)
+	// if len(uid) == 0 {
+	// 	return "", errors.New("cannot get cache key for pod with empty UID")
+	// }
+	// return uid, nil
+	pName := string(pod.Name)
+	return pName, nil
 }
 
 // DefaultBindAllHostIP defines the default ip address used to bind to all host.

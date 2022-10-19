@@ -35,7 +35,7 @@ func (pl ImageLocality) Name() string {
 }
 
 func (pl ImageLocality) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#6.", pl.Name())
+	fmt.Println("S#6. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -49,8 +49,7 @@ func (pl ImageLocality) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInf
 		if !nodeinfo.PluginResult.IsFiltered {
 			nodeScore := int(0)
 			nodeScore = int(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
-			fmt.Println("scoring>image_locality: ", nodeScore, "scode, node: ", nodeinfo.Node().Name)
-			nodeinfo.PluginResult.NodeScore += nodeScore
+			nodeinfo.PluginResult.NodeScore += (nodeScore / 20)
 		}
 	}
 }

@@ -232,7 +232,7 @@ func updatePod(oldPodInfo *QueuedPodInfo, newPod *v1.Pod) *QueuedPodInfo {
 }
 
 func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
-	fmt.Println("updatepod in scheduling queue: ", oldPod.Name)
+	// fmt.Println("updatepod in scheduling queue: ", oldPod.Name)
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -265,7 +265,7 @@ func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
 // Delete deletes the item from either of the two queues. It assumes the pod is
 // only in one queue.
 func (q *SchedulingQueue) Delete(pod *v1.Pod) error {
-	fmt.Println("delete pod from scheduing queue")
+	// fmt.Println("- delete pod from scheduing queue")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	// q.PodNominator.DeleteNominatedPodIfExists(pod)
@@ -274,10 +274,10 @@ func (q *SchedulingQueue) Delete(pod *v1.Pod) error {
 	q.PrintbackoffQ()
 
 	if exists, podInfo := q.backoffQLookup(pod.UID); exists {
-		fmt.Println("delete Backoff Queue pod [", podInfo.PodInfo.Pod.Name, "]")
+		fmt.Println("- delete Backoff Queue pod [", podInfo.PodInfo.Pod.Name, "]")
 	}
 	if exists, podInfo := q.activeQLookup(pod.UID); exists {
-		fmt.Println("delete Active Queue pod [", podInfo.PodInfo.Pod.Name, "]")
+		fmt.Println("- delete Active Queue pod [", podInfo.PodInfo.Pod.Name, "]")
 	}
 
 	return nil

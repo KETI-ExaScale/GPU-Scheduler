@@ -44,7 +44,7 @@ func (pl PodTopologySpread) Name() string {
 }
 
 func (pl PodTopologySpread) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#5.", pl.Name())
+	fmt.Println("S#5. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)

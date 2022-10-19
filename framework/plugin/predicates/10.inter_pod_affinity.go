@@ -36,12 +36,11 @@ func (pl InterPodAffinity) Name() string {
 }
 
 func (pl InterPodAffinity) Debugg() {
-	fmt.Println("#10.", pl.Name())
+	fmt.Println("F#10.", pl.Name())
 }
 
 func (pl InterPodAffinity) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
-	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 
 			// 			node := nodeinfo.Node()
@@ -53,6 +52,7 @@ func (pl InterPodAffinity) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 			// 				fmt.Println(failedPredicates, "-", err)
 			// 				nodeinfo.PluginResult.FilterNode(pl.Name())
 			// 				nodeInfoCache.NodeCountDown()
+			//              newPod.FilterNode(pl.Name())
 			// 				continue
 			// 			}
 
@@ -65,15 +65,12 @@ func (pl InterPodAffinity) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 			// 				fmt.Println(failedPredicates, "-", err)
 			// 				nodeinfo.PluginResult.FilterNode(pl.Name())
 			// 				nodeInfoCache.NodeCountDown()
+			//              newPod.FilterNode(pl.Name())
 			// 				continue
 			// 			}
 
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }
 
 // func (pl InterPodAffinity) satisfiesExistingPodsAntiAffinity(pod *v1.Pod, meta Metadata, nodeInfo *r.NodeInfo) (bool, error) {

@@ -14,11 +14,10 @@ func (pl CheckVolumeBinding) Name() string {
 }
 
 func (pl CheckVolumeBinding) Debugg() {
-	fmt.Println("#11. ", pl.Name())
+	fmt.Println("F#11.", pl.Name())
 }
 
 func (pl CheckVolumeBinding) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			conflict := false
@@ -30,17 +29,14 @@ func (pl CheckVolumeBinding) Filter(nodeInfoCache *r.NodeCache, newPod *r.Queued
 					}
 				}
 				if conflict {
-					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
+					newPod.FilterNode(pl.Name())
 					break
 				}
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }
 
 func isVolumeConflict(volume corev1.Volume, pod *corev1.Pod) bool {

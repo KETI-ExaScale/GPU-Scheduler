@@ -12,19 +12,14 @@ func (pl NoVolumeZoneConflict) Name() string {
 }
 
 func (pl NoVolumeZoneConflict) Debugg() {
-	fmt.Println("#12. ", pl.Name())
+	fmt.Println("F#12.", pl.Name())
 }
 
 func (pl NoVolumeZoneConflict) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
-	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 
 }

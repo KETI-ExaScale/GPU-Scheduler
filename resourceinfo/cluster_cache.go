@@ -17,6 +17,7 @@ type ClusterCache struct {
 	ClusterInfoList     map[string]*ClusterInfo
 	Available           bool
 	AvailableClusterCnt int
+	FilteredCluster     []string
 }
 
 type ClusterInfo struct {
@@ -33,6 +34,7 @@ func NewClusterCache() (*ClusterCache, error) {
 	myClusterInfo.Config = hostConfig
 	myClusterInfo.Clientset = hostKubeClient
 	myClusterInfo.ClusterIP = hostConfig.Host
+	var filteredCluster []string
 
 	var clusterInfoList = make(map[string]*ClusterInfo)
 	kubeConfigPath, err := findKubeConfig()
@@ -45,8 +47,6 @@ func NewClusterCache() (*ClusterCache, error) {
 			Available:       false,
 		}, err
 	}
-
-	fmt.Println("kubeConfigPath: ", kubeConfigPath)
 
 	files, err := ioutil.ReadDir(kubeConfigPath)
 	if err != nil {
@@ -68,13 +68,12 @@ func NewClusterCache() (*ClusterCache, error) {
 		}
 
 		kubeConfigPath_ := ""
-		fmt.Println("filename:", file.Name())
 		kubeConfigPath_ = fmt.Sprintf("%v/%v", kubeConfigPath, file.Name())
-		fmt.Println("path:", kubeConfigPath_)
 
 		kubeConfig, err := clientcmd.LoadFromFile(kubeConfigPath_)
 		if err != nil {
 			fmt.Println("<error> load from file error-", err)
+			continue
 		}
 
 		clusters := kubeConfig.Clusters
@@ -94,6 +93,7 @@ func NewClusterCache() (*ClusterCache, error) {
 				fmt.Println("<error> BuildConfigFromFlags error-", err)
 				clusterInfo.Avaliable = false
 				clusterInfoList[name] = clusterInfo
+				filteredCluster = append(filteredCluster, name)
 				continue
 			}
 			clientset, err := kubernetes.NewForConfig(config)
@@ -102,6 +102,7 @@ func NewClusterCache() (*ClusterCache, error) {
 				clusterInfo.Avaliable = false
 				clusterInfo.Config = config
 				clusterInfoList[name] = clusterInfo
+				filteredCluster = append(filteredCluster, name)
 				continue
 			}
 
@@ -110,10 +111,6 @@ func NewClusterCache() (*ClusterCache, error) {
 			clusterInfo.ClusterIP = cluster.Server
 			clusterInfoList[name] = clusterInfo
 			cnt++
-
-			fmt.Println("-cluster name: ", name)
-			fmt.Println("-ClusterIP ", cluster.Server)
-			fmt.Println("---")
 		}
 	}
 
@@ -123,6 +120,7 @@ func NewClusterCache() (*ClusterCache, error) {
 		ClusterInfoList:     clusterInfoList,
 		Available:           true,
 		AvailableClusterCnt: cnt,
+		FilteredCluster:     filteredCluster,
 	}, nil
 }
 
@@ -144,5 +142,19 @@ func NewClusterInfo() *ClusterInfo {
 		Clientset: nil,
 		ClusterIP: "",
 		Avaliable: true,
+	}
+}
+
+func (cc ClusterCache) DumpClusterInfo() {
+	fmt.Println("\n-----:: Dump cluster Info Cache ::-----")
+	fmt.Println("# total joined cluster count: ", len(cc.ClusterInfoList)+1) //joined + mycluster
+
+	for cn, ci := range cc.ClusterInfoList {
+		fmt.Println("[clusterName : ", cn, "]")
+		if ci.Avaliable {
+			fmt.Println("# Cluster IP: ", ci.ClusterIP)
+		} else {
+			fmt.Println("-> Unavailable Cluster")
+		}
 	}
 }

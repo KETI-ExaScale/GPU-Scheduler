@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"gpu-scheduler/framework"
 	r "gpu-scheduler/resourceinfo"
-	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -33,9 +31,7 @@ type GPUScheduler struct {
 
 func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error) {
 	sq := r.NewQueue()
-
 	sp := NewSchedulingPolicy()
-
 	nc := r.NewNodeInfoCache(hostKubeClient)
 	err := nc.InitNodeInfoCache()
 	if err != nil {
@@ -43,22 +39,20 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 		//내 클러스터에는 배포 가능한 노드가 없음(노드를 가져올 수 없음)
 		//다른 클러스터엔 가능할수도
 	}
-	nc.DumpCache()
-
 	fwk := framework.GPUPodSpreadFramework()
-
 	sr := r.NewScheduleResult()
 	cc, err := r.NewClusterCache()
+	cmhost := ""
+	cc.DumpClusterInfo() //테스트용
 	if err != nil {
-		fmt.Println("create is only available to my cluster")
+		fmt.Println("<error> kubeconfig error / scheduling is only available to my cluster")
 		//내 클러스터에만 배포 가능
-	}
-
-	cmhost := findClusterManagerHost(hostKubeClient)
-	if cmhost == "" {
-		fmt.Println("cannot find cluster-manager in cluster!")
-		fmt.Println("cluster scheduling is only available to my cluster")
-		//내 클러스터에만 배포 가능
+	} else {
+		cmhost = findClusterManagerHost(hostKubeClient)
+		if cmhost == "" {
+			fmt.Println("- cannot find cluster-manager in cluster / scheduling is only available to my cluster")
+			//내 클러스터에만 배포 가능
+		}
 	}
 
 	return &GPUScheduler{
@@ -75,82 +69,35 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 }
 
 func (sched *GPUScheduler) Run(ctx context.Context) {
-	sched.SchedulingQueue.Run()
-	wait.UntilWithContext(ctx, sched.preScheduling, 0)
+	sched.SchedulingQueue.Run()                        //Scheduling Queue Flush Routine
+	wait.UntilWithContext(ctx, sched.preScheduling, 0) // Schedule Pod Routine
 	sched.SchedulingQueue.Close()
 }
 
+/*
+   ------  Policy List ------
+	1. node-gpu-score-weight
+	(2. pod-re-schedule-permit)
+	2. nvlink-weight-percentage
+	3. gpu-allocate-prefer
+*/
 type SchedulingPolicy struct {
 	NodeWeight             float64
 	GPUWeight              float64
 	ReSchedulePermit       bool
 	NodeReservationPermit  bool
 	NVLinkWeightPercentage int64
-	GPUAllocatePrefer      bool
-	changed                <-chan bool
+	GPUAllocatePrefer      string
 }
 
 func NewSchedulingPolicy() *SchedulingPolicy {
-	nodeWeight := float64(0.4)
-	gpuWeight := float64(0.3)
-	reschedulePermit := false
-	nodeReservetionPermit := false
-	nvlinkWeightPercentage := int64(10)
-	gpuAllocatePrefer := true
-
-	p, err := exec.Command("cat", "/gpu-scheduler-configmap/node-gpu-score-weight").Output()
-	if err == nil {
-		nodeWeight, _ = strconv.ParseFloat(strings.Split(string(p), " ")[0], 64)
-		gpuWeight, _ = strconv.ParseFloat(strings.Split(string(p), " ")[1], 64)
-	}
-
-	p, err = exec.Command("cat", "/gpu-scheduler-configmap/pod-re-schedule-permit").Output()
-	if err == nil {
-
-		reschedulePermit, _ = strconv.ParseBool(string(p))
-	}
-
-	p, err = exec.Command("cat", "/gpu-scheduler-configmap/node-reservation-permit").Output()
-	if err == nil {
-		nodeReservetionPermit, _ = strconv.ParseBool(string(p))
-	}
-
-	p, err = exec.Command("cat", "/gpu-scheduler-configmap/nvlink-weight-percentage").Output()
-	if err == nil {
-		nvlinkWeightPercentage, _ = strconv.ParseInt(string(p), 0, 64)
-	}
-
-	p, err = exec.Command("cat", "/gpu-scheduler-configmap/least-allocated-pod-prefer").Output()
-	if err == nil {
-		pp := string(p)
-		if pp == "spread" {
-			gpuAllocatePrefer = true
-		} else {
-			gpuAllocatePrefer = false
-		}
-	}
-
-	fmt.Println("<GPU Scheduler Policy List>")
-	fmt.Println("1.", r.Policy1)
-	fmt.Println("  -node weight : ", nodeWeight)
-	fmt.Println("  -gpu weight : ", gpuWeight)
-	fmt.Println("2.", r.Policy2)
-	fmt.Println("  -value : ", reschedulePermit)
-	fmt.Println("3.", r.Policy3)
-	fmt.Println("  -value : ", nodeReservetionPermit)
-	fmt.Println("4.", r.Policy4)
-	fmt.Println("  -value : ", nvlinkWeightPercentage)
-	fmt.Println("5.", r.Policy5)
-	fmt.Println("  -value : ", gpuAllocatePrefer)
-
 	return &SchedulingPolicy{
-		NodeWeight:             nodeWeight,
-		GPUWeight:              gpuWeight,
-		ReSchedulePermit:       reschedulePermit,
-		NodeReservationPermit:  nodeReservetionPermit,
-		NVLinkWeightPercentage: nvlinkWeightPercentage,
-		GPUAllocatePrefer:      gpuAllocatePrefer,
-		changed:                make(chan bool),
+		NodeWeight:             0.4,
+		GPUWeight:              0.6,
+		ReSchedulePermit:       true,
+		NodeReservationPermit:  true,
+		NVLinkWeightPercentage: 10,
+		GPUAllocatePrefer:      "spread",
 	}
 }
 
@@ -168,7 +115,7 @@ func findClusterManagerHost(hostKubeClient *kubernetes.Clientset) string {
 	pods, _ := hostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 
 	for _, pod := range pods.Items {
-		if strings.HasPrefix(pod.Name, "keti-cluster-manager") {
+		if strings.HasPrefix(pod.Name, "keti-cluster-manager") && pod.Status.Phase == "Running" {
 			return pod.Status.PodIP
 		}
 	}
@@ -176,43 +123,38 @@ func findClusterManagerHost(hostKubeClient *kubernetes.Clientset) string {
 }
 
 func (sched *GPUScheduler) InitClusterManager() error {
-	fmt.Println("@ init cluster manager")
-
 	if sched.ClusterManagerHost == "" {
-		fmt.Println("Init Cluster Manager - cluster manager unavailable!")
 		return nil
 	}
 
-	//testpod 동작
-	initPod := r.NewQueuedPodInfo(nil)
-	fmt.Println("!!!!init cluster manager pod requested resource!!!!", initPod.PodInfo.RequestedResource)
+	initPod := r.NewQueuedPodInfo(nil) //Run Test Init Pod
 	sched.Framework = framework.InitNodeScoreFramework()
 
 	err := sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
 	if err != nil {
-		fmt.Println("<error>Init Cluster Maanger->Run scoring plugins error")
+		fmt.Println("<error> Init Cluster Manager->Run scoring plugins error")
 		return err
 	}
 
 	var initList []InitStruct
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
-		nodeScore := calcNodeScore(nodeInfo, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
-		initStruct := InitStruct{nodeName, nodeScore, nodeInfo.NodeMetric.TotalGPUCount}
-		fmt.Println("#Init Info (", nodeName, ",", nodeScore, ",", nodeInfo.NodeMetric.TotalGPUCount, ")")
-
-		initList = append(initList, initStruct)
+		if !nodeInfo.PluginResult.IsFiltered {
+			nodeScore := calcInitNodeScore(nodeInfo, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
+			initStruct := InitStruct{nodeName, nodeScore, nodeInfo.NodeMetric.TotalGPUCount}
+			initList = append(initList, initStruct)
+		}
 	}
 
 	success, err := InitMyClusterManager(sched.ClusterManagerHost, initList)
 	if err != nil || !success {
-		fmt.Println("<error> Init My Cluster Manager Error-", err)
+		sched.AvailableClusterManager = false
+		return err
 	}
 	sched.AvailableClusterManager = true
-
 	return nil
 }
 
-func calcNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float64) int64 {
+func calcInitNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float64) int64 {
 	nodeScore := float64(nodeInfo.PluginResult.NodeScore)
 	gpuScore := float64(0)
 	cnt := float64(0)
@@ -222,7 +164,7 @@ func calcNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float64) 
 	}
 	gpuScore = gpuScore / cnt
 	totalScore := nodeScore*nodeWeight + gpuScore*gpuWeight
-	fmt.Println("nodescore:", nodeScore, " gpuscore:", gpuScore, " totalscore:", totalScore)
+	fmt.Println("<test> nodescore:", nodeScore, " gpuscore:", gpuScore, " totalscore:", totalScore)
 	return int64(totalScore)
 }
 

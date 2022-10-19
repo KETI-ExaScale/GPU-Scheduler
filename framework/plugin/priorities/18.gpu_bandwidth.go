@@ -26,7 +26,7 @@ func (pl GPUBandwidth) Name() string {
 }
 
 func (pl GPUBandwidth) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#18.", pl.Name())
+	fmt.Println("S#18.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {

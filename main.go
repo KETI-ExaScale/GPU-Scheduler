@@ -29,12 +29,12 @@ import (
 )
 
 func main() {
-	log.Println("-----Start GPU Scheduler-----")
+	log.Println("\n-----:: Start GPU Scheduler ::-----")
 
-	//test() 에러파드 재스케줄링 테스트
+	//reschedulingTest() // 에러파드 재스케줄링 테스트
 
-	quitChan := make(chan struct{}) //struct타입을 전송할 수 있는 통신용 채널 생성
-	var wg sync.WaitGroup           //모든 고루틴이 종료될 때 까지 대기할 때 사용
+	quitChan := make(chan struct{})
+	var wg sync.WaitGroup
 
 	hostConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -44,56 +44,39 @@ func main() {
 
 	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
 
-	s.Scheduler, err = s.NewGPUScheduler(hostKubeClient) //스케줄러 생성
+	s.Scheduler, err = s.NewGPUScheduler(hostKubeClient) // GPU Scheduler Create
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	s.Scheduler.InitClusterManager()
+	err = s.Scheduler.InitClusterManager() // Init Cluster Manager
 	if err != nil {
 		fmt.Println("<error> Init Cluster Manager error-", err)
 	}
 
-	s.AddAllEventHandlers(s.Scheduler, informerFactory)
+	s.AddAllEventHandlers(s.Scheduler, informerFactory) // Scheduler Event Handler (node,pod craete/delete/update | policy update)
 	wg.Add(1)
-	go informerFactory.Core().V1().Pods().Informer().Run(quitChan)
-
-	//폴리시 이벤트 핸들러 추가
+	go informerFactory.Start(quitChan)
 
 	wg.Add(1)
 	ctx, cancel := context.WithCancel(context.Background())
-	s.Scheduler.Run(ctx) //schedule_one context
-
-	// wg.Add(1)
-	// go s.Scheduler.RunScheduler(quitChan, &wg) //[A]Run Scheduling Routine
-
-	// wg.Add(1)
-	// go s.Scheduler.MonitorUnscheduledPods(quitChan, &wg) //[B]MonitorUnscheduledPods (start api server watching)
-
-	// wg.Add(1)
-	// go s.Scheduler.WatchLowPerformancePod(quitChan, &wg) //[D]Cache Thread
-
-	// wg.Add(1)
-	// go s.Scheduler.WatchSchedulerPolicy(quitChan, &wg) //[E] Watch Scheduler Policy
-
-	// // wg.Add(1)
-	// // go s.Scheduler.ReconcileRescheduledPods(30, quitChan, &wg) //[C]Queue Flush(BackOff,Reschedule)
+	s.Scheduler.Run(ctx) // Schedule Pod Routine & Scheduling Queue Flush Routine
 
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM) //SIGINT를 지정하여 기다리는 루틴
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	for {
 		select {
 		case <-signalChan:
 			log.Printf("Shutdown signal received, exiting...")
 			close(quitChan)
 			cancel()
-			wg.Wait() //모든 고루틴이 종료될 때까지 대기
+			wg.Wait()
 			os.Exit(0)
 		}
 	}
 }
 
-// func test() {
+// func reschedulingTest() {
 // 	host_config, _ := rest.InClusterConfig()
 // 	host_kubeClient := kubernetes.NewForConfigOrDie(host_config)
 // 	selector := fields.SelectorFromSet(fields.Set{"status.phase": "Failed"})

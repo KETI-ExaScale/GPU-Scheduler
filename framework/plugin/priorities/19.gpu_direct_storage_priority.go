@@ -26,7 +26,7 @@ func (pl GPUDirectStoragePriority) Name() string {
 }
 
 func (pl GPUDirectStoragePriority) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#19.", pl.Name())
+	fmt.Println("S#19.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {

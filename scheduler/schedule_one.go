@@ -27,75 +27,80 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 
 	"gpu-scheduler/framework"
 	r "gpu-scheduler/resourceinfo"
 )
 
 const (
+	scheduleTypeError  = 0
 	clusterScheuduling = 1
 	nodeScheduling     = 2
 	clusterBinding     = 3
 )
 
 //metric update, score init
-func (sched *GPUScheduler) UpdateCache() error {
+func (sched *GPUScheduler) UpdateCache() {
 	fmt.Println("[STEP 1] Update Scheduler Resource Info")
-	fmt.Println("# Sending gRPC request...")
+	fmt.Println("- Sending gRPC Request To Metric Collector ...")
 
 	sched.ScheduleResult.InitResult()
 	sched.NodeInfoCache.AvailableNodeCount = 0
 
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
-		if nodeInfo.GRPCHost == "" {
+		nodeInfo.PluginResult.InitPluginResult()
+		nodeInfo.NodeMetric.InitNVLinkList()
+
+		if nodeInfo.MetricCollectorIP == "" {
 			ip := r.GetMetricCollectorIP(nodeInfo.Pods)
 			if ip == "" {
-				fmt.Printf("node {%v} cannot find GPU Metric Collector\n", nodeName)
+				fmt.Printf("- node {%v} cannot find GPU Metric Collector\n", nodeName)
+				nodeInfo.PluginResult.IsFiltered = true
+				continue
 			} else {
-				nodeInfo.GRPCHost = ip
+				nodeInfo.MetricCollectorIP = ip
 			}
 		}
 
-		nodeInfo.PluginResult.InitPluginResult()
-		nodeInfo.NodeMetric.InitNVLinkList()
-		err := nodeInfo.NodeMetric.GetNodeMetric(nodeInfo.GRPCHost)
+		err := nodeInfo.NodeMetric.GetNodeMetric(nodeInfo.MetricCollectorIP)
 		if err != nil {
-			fmt.Println("<error> failed to get node metric, reason:", err)
+			fmt.Println("<error> failed to get node metric - ", err)
 			nodeInfo.PluginResult.IsFiltered = true
 			continue
 		}
 
 		for _, uuid := range nodeInfo.NodeMetric.GPU_UUID {
-			err := nodeInfo.GPUMetrics[uuid].GetGPUMetric(uuid, nodeInfo.GRPCHost)
+			err := nodeInfo.GPUMetrics[uuid].GetGPUMetric(uuid, nodeInfo.MetricCollectorIP)
 			if err != nil {
-				fmt.Println("<error> failed to get gpu metric, reason:", err)
+				fmt.Println("<error> failed to get gpu metric - ", err)
+				nodeInfo.PluginResult.GPUScores[uuid].IsFiltered = true
 				continue
 			}
 
 			nodeInfo.PluginResult.GPUCountUp()
 		}
 
-		sched.NodeInfoCache.AvailableNodeCount++
+		sched.NodeInfoCache.NodeCountUP()
 	}
-
-	return nil
 }
 
 func (sched *GPUScheduler) checkScheduleType() int {
 	targetCluster := sched.NewPod.Pod.Annotations["clusterName"]
-	fmt.Println("\n1. check pod annotation[clusterName]: ", targetCluster)
-	fmt.Println("sched.ClusterInfoCache.MyClusterName: ", sched.ClusterInfoCache.MyClusterName)
+	// fmt.Println("\n1. check pod annotation[clusterName]: ", targetCluster)
+	// fmt.Println("sched.ClusterInfoCache.MyClusterName: ", sched.ClusterInfoCache.MyClusterName)
 	if targetCluster == "" {
-		//do cluster scheduling
-		return clusterScheuduling
+		if sched.ClusterInfoCache.Available && sched.AvailableClusterManager {
+			return clusterScheuduling //do cluster scheduling
+		}
+		return nodeScheduling //do node scheduling
 	} else if targetCluster != sched.ClusterInfoCache.MyClusterName {
-		//do cluster binding
 		sched.NewPod.TargetCluster = targetCluster
-		return clusterBinding
-	} else {
-		//do node scheduling
-		return nodeScheduling
+		if !sched.ClusterInfoCache.Available {
+			return scheduleTypeError //cannot create to target cluster
+		}
+		return clusterBinding //do cluster binding
+	} else { //targetCluster == myCluster
+		return nodeScheduling //do node scheduling
 	}
 }
 
@@ -107,9 +112,11 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	if sched.NewPod == nil || sched.NewPod.Pod == nil {
 		return
 	}
-	fmt.Println("- schedule pod { ", sched.NewPod.Pod.Name, " }")
 
-	fmt.Println("!!!!**pod requested resource!!!!", sched.NewPod.RequestedResource)
+	fmt.Println("\n-----:: Pod Scheduling Start ::-----")
+	fmt.Println("- pod name: ", sched.NewPod.Pod.Name)
+
+	fmt.Println("<test> pod request resource: ", sched.NewPod.RequestedResource)
 
 	flag := sched.checkScheduleType()
 
@@ -119,26 +126,24 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	} else if flag == clusterBinding {
 		fmt.Println("- need cluster binding")
 		sched.createPodToAnotherCluster(ctx, *sched.NewPod)
-	} else { //nodeScheduling
+	} else if flag == nodeScheduling {
 		fmt.Println("- need node scheduling")
 		sched.nodeScheduleOne(ctx)
+	} else {
+		fmt.Println("<error> cannot create to target cluster, target cluster is unavailable")
 	}
 }
 
-func patchPodAnnotationClusterNameMarshal(clusterName string) ([]byte, error) {
+//write clusterName to pod annotation
+func (sched *GPUScheduler) patchPodAnnotationClusterName(clusterName string) error {
+	fmt.Println("- write clusterName in pod annotation")
+
 	patchAnnotations := map[string]interface{}{
 		"metadata": map[string]map[string]string{"annotations": {
 			"clusterName": clusterName,
 		}}}
 
-	return json.Marshal(patchAnnotations)
-}
-
-//write GPU_ID to annotation
-func (sched *GPUScheduler) patchPodAnnotationClusterName(clusterName string) error {
-	fmt.Println("3. Write clusterName in Pod Annotation")
-
-	patchedAnnotationBytes, err := patchPodAnnotationClusterNameMarshal(clusterName)
+	patchedAnnotationBytes, err := json.Marshal(patchAnnotations)
 	if err != nil {
 		return fmt.Errorf("<error> failed to generate patched annotations,reason: %v", err)
 	}
@@ -154,81 +159,98 @@ func (sched *GPUScheduler) patchPodAnnotationClusterName(clusterName string) err
 }
 
 func (sched *GPUScheduler) createPodToAnotherCluster(ctx context.Context, qpod r.QueuedPodInfo) {
-	fmt.Println("# Create Pod To Another Cluster")
+	fmt.Println("- Create Pod To Another Cluster")
 
 	targetCluster := qpod.TargetCluster
 	if !sched.ClusterInfoCache.ClusterInfoList[targetCluster].Avaliable {
-		fmt.Println(fmt.Errorf("<error> your target cluster {%s} in yaml is unavailable", targetCluster))
+		fmt.Println(fmt.Errorf("<error> your target cluster {%s} is unavailable", targetCluster))
+		qpod.FilteredCluster = append(qpod.FilteredCluster, targetCluster) // add filtered cluster
+		sched.clusterScheduleOne(ctx)                                      //re cluster scheduling
 		return
 	}
 
 	err := sched.patchPodAnnotationClusterName(qpod.TargetCluster)
 	if err != nil {
-		fmt.Println(err)
-		sched.nodeScheduleOne(ctx)
+		sched.nodeScheduleOne(ctx) //create my cluster
 		return
 	}
 
 	targetClientset := sched.ClusterInfoCache.ClusterInfoList[qpod.TargetCluster].Clientset
 
-	//누락되는 정보가 없을까???
-	newPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        qpod.Pod.ObjectMeta.Name,
-			Namespace:   qpod.Pod.Namespace,
-			Annotations: qpod.Pod.GetAnnotations(),
-		},
-		Spec:     qpod.Pod.Spec,
-		Status:   corev1.PodStatus{},
-		TypeMeta: qpod.Pod.TypeMeta,
-	}
-
-	// period := int64(0)
+	period := int64(0)
 	deletePolicy := metav1.DeletePropagationForeground
 	deleteOptions := metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-		// GracePeriodSeconds: &period,
+		PropagationPolicy:  &deletePolicy,
+		GracePeriodSeconds: &period,
 	}
 
+	//delete origin pod in my cluster
 	//job과 Pod 말고 deployment인 경우 존재??
 	jobName := qpod.Pod.ObjectMeta.Labels["job-name"] //job이 있다면 job-name 존재
 	if jobName != "" {
-		fmt.Println("#jobname::", jobName)
+		//누락되는 정보가 없을까???
+		newPod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        qpod.Pod.ObjectMeta.Name,
+				Namespace:   qpod.Pod.Namespace,
+				Annotations: qpod.Pod.GetAnnotations(),
+			},
+			Spec:     qpod.Pod.Spec,
+			Status:   corev1.PodStatus{},
+			TypeMeta: qpod.Pod.TypeMeta,
+		}
+
+		fmt.Println("<test> jobname::", jobName)
 		err = sched.ClusterInfoCache.MyClusterInfo.Clientset.BatchV1().Jobs(qpod.Pod.Namespace).Delete(context.TODO(), jobName, deleteOptions)
 		if err != nil {
-			fmt.Println("<error> failed to delete job")
-			fmt.Println("reason: ", err)
+			fmt.Println("<error> failed to delete job - ", err)
+			return
+		}
+		//job은 job으로 배포?
+		_, err = targetClientset.CoreV1().Pods(qpod.Pod.Namespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
+		// _, err = targetClientset.BatchV1().Jobs(qpod.Pod.Namespace).Create(context.TODO(), newPod., metav1.CreateOptions{})
+		if err != nil {
+			fmt.Println("<error> failed to create pod {", qpod.Pod.Name, "} to target cluster {", qpod.TargetCluster, "} - ", err)
+			sched.SchedulingQueue.Add_BackoffQ(&qpod)
 			return
 		}
 	} else {
+		//누락되는 정보가 없을까???
+		newPod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        qpod.Pod.ObjectMeta.Name,
+				Namespace:   qpod.Pod.Namespace,
+				Annotations: qpod.Pod.GetAnnotations(),
+			},
+			Spec:     qpod.Pod.Spec,
+			Status:   corev1.PodStatus{},
+			TypeMeta: qpod.Pod.TypeMeta,
+		}
+
 		err = sched.ClusterInfoCache.MyClusterInfo.Clientset.CoreV1().Pods(qpod.Pod.Namespace).Delete(context.TODO(), qpod.Pod.Name, deleteOptions)
 		if err != nil {
-			fmt.Println("<error> failed to delete pod")
-			fmt.Println("reason: ", err)
+			fmt.Println("<error> failed to delete pod - ", err)
+			return
+		}
+		//pod는 pod로 배포?
+		_, err = targetClientset.CoreV1().Pods(qpod.Pod.Namespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
+		if err != nil {
+			fmt.Println("<error> failed to create pod {", qpod.Pod.Name, "} to target cluster {", qpod.TargetCluster, "} - ", err)
+			sched.SchedulingQueue.Add_BackoffQ(&qpod)
 			return
 		}
 	}
 
-	//job은 job으로 배포?
-	_, err = targetClientset.CoreV1().Pods(qpod.Pod.Namespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
-	if err != nil {
-		fmt.Println("<error> failed to create pod to another cluster/ pod=", qpod.Pod.Name, " /clustername=", qpod.TargetCluster)
-		fmt.Println("reason: ", err)
-		sched.SchedulingQueue.Add_BackoffQ(&qpod)
-		return
-	}
-
-	fmt.Println("cluster create success - ", qpod.Pod.Name)
+	fmt.Printf("-----:: Successfully Create Pod {%s} To Target Cluster ::-----\n", qpod.Pod.Name)
 
 	// sched.deletePodFromSchedulingQueue(qpod)
 }
 
 func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
-	fmt.Println("\n2. cluster scheduling start")
+	fmt.Println("- Request Cluster Scheduling To Cluster Manager")
 
 	if !sched.ClusterInfoCache.Available {
-		fmt.Println("# not available get other cluster config")
-		fmt.Println("# cluster scheduling is only available to my cluster")
+		fmt.Println("- *not available get other cluster config / cluster scheduling is only available to my cluster")
 		sched.nodeScheduleOne(ctx)
 		return
 	}
@@ -236,8 +258,7 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 	if sched.ClusterManagerHost == "" {
 		host := findClusterManagerHost(sched.NodeInfoCache.HostKubeClient)
 		if host == "" {
-			fmt.Println("<error> cannot find cluster-manager in cluster!")
-			fmt.Println("# cluster scheduling is only available to my cluster")
+			fmt.Println("- *cannot find cluster-manager in cluster /  cluster scheduling is only available to my cluster")
 			sched.nodeScheduleOne(ctx)
 			return
 		} else {
@@ -249,9 +270,8 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 	gpucount := sched.NewPod.PodInfo.RequestedResource.GPUCount
 	fc := sched.NewPod.FilteredCluster
 	targetCluster, success, err := GetBestCluster(ip, gpucount, fc)
-
 	if err != nil {
-		fmt.Println("<error> connect cluster manager error")
+		fmt.Println("<error> cluster manager get best cluster failed - ", err)
 		sched.nodeScheduleOne(ctx)
 		return
 	}
@@ -265,13 +285,13 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 		return
 	}
 
-	fmt.Println("targetCluster: ", targetCluster, "| myClusterName: ", sched.ClusterInfoCache.MyClusterName)
+	fmt.Println("# targetCluster: ", targetCluster, "| myClusterName: ", sched.ClusterInfoCache.MyClusterName)
 
 	if targetCluster == sched.ClusterInfoCache.MyClusterName {
-		fmt.Println("# target cluster name is my cluster!")
+		fmt.Println("- target cluster name is my cluster!")
 		sched.nodeScheduleOne(ctx)
 	} else {
-		fmt.Println("# target cluster name is not my cluster!")
+		fmt.Println("- target cluster name is not my cluster!")
 		sched.createPodToAnotherCluster(ctx, *sched.NewPod)
 		// sched.deletePodFromSchedulingQueue(sched.NewPod)
 		return
@@ -279,91 +299,68 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 }
 
 func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
-	fmt.Println("node scheduling { ", sched.NewPod.Pod.Name, " }")
-
 	pod := sched.NewPod.Pod
-
 	startTime := time.Now()
-
 	sched.frameworkForPod()
 
-	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod))
-
-	//[STEP 1] Update Scheduler
-	err := sched.UpdateCache() //metric update, score init
-	if err != nil {
-		fmt.Println("nodeinfolist update error")
+	//[STEP 1] Update Scheduler Cache
+	sched.UpdateCache() //metric update, score init
+	if sched.NodeInfoCache.AvailableNodeCount == 0 {
+		fmt.Println("<error> there isn't node to schedule")
 		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
 		return
 	}
 
-	sched.NodeInfoCache.DumpCache() //확인용
+	sched.NodeInfoCache.DumpCache() //테스트용
 
-	//[STEP 2,3] Schedule a pod
-	err = sched.schedulePod()
+	//[STEP 2,3] Filtering/Scoring Node/GPU
+	err := sched.schedulePod()
 	if err != nil {
-		fmt.Println("schedulePod error")
+		fmt.Println("<error> pod scheduling failed - ")
 		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
 		return
 	}
 
-	//[STEP 4]get Best Node/GPU
+	//[STEP 4]Get Best Node/GPU
 	sched.GetBestNodeAndGPU()
-
 	sched.NodeInfoCache.UpdatePodState(pod, r.Assumed)
+	sched.NodeInfoCache.GPUPodCountUp(sched.ScheduleResult.BestNode, sched.ScheduleResult.BestGPU)
 
 	elapsedTime := time.Since(startTime)
 
-	fmt.Println("#Scheduling Time : ", elapsedTime.Seconds())
+	fmt.Println("# Scheduling Time : ", elapsedTime.Seconds())
 
-	//[STEP 5] Binding Stage
+	//[STEP 5] Binding Pod To Node
 	go sched.Binding(ctx, *sched.NewPod, *sched.ScheduleResult)
 }
 
 func (sched *GPUScheduler) schedulePod() error {
-	if sched.NodeInfoCache.TotalNodeCount == 0 {
-		return fmt.Errorf("there is no node to schedule")
-	}
-
 	//[STEP 2] Filtering Stage
 	err := sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
 	if err != nil {
-		fmt.Println("Run filtering plugins error")
-		return err
+		return fmt.Errorf("- filtering failed (%s)", err)
+	}
+
+	if sched.NodeInfoCache.AvailableNodeCount == 0 {
+		return fmt.Errorf("- there is no node to schedule / %s", sched.NewPod.UnschedulablePlugins)
 	}
 
 	//[STEP 3] Scoring Stage
 	err = sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
 	if err != nil {
-		fmt.Println("Run scoring plugins error")
-		return err
+		return fmt.Errorf("- scoring failed (%s)", err)
 	}
 
 	return nil
 }
 
-// func (sched *GPUScheduler) assume(assumed *corev1.Pod, host string) error {
-// 	// Optimistically assume that the binding will succeed and send it to apiserver
-// 	// in the background.
-// 	// If the binding fails, scheduler will release resources allocated to assumed pod
-// 	// immediately.
-// 	assumed.Spec.NodeName = host
-
-// 	if err := sched.NodeInfoCache.AssumePod(assumed); err != nil {
-// 		klog.ErrorS(err, "Scheduler cache AssumePod failed")
-// 		return err
-// 	}
-// 	// // if "assumed" is a nominated pod, we should remove it from internal cache
-// 	// if sched.SchedulingQueue != nil {
-// 	// 	sched.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
-// 	// }
-
-// 	return nil
-// }
-
 func (sched *GPUScheduler) frameworkForPod() {
 	if sched.NewPod.IsGPUPod {
-		sched.Framework = framework.GPUPodSpreadFramework()
+		if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
+			sched.Framework = framework.GPUPodSpreadFramework()
+		} else {
+			sched.Framework = framework.GPUPodBinpackFramework()
+		}
 	} else {
 		sched.Framework = framework.NonGPUPodFramework()
 	}
@@ -382,8 +379,8 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 		}
 
 	}
-	fmt.Println("#Result: BestNode {", sched.ScheduleResult.BestNode, "}")
-	fmt.Println("#Result: BestGPU {", sched.ScheduleResult.BestGPU, "}")
+	fmt.Println("# Result: BestNode {", sched.ScheduleResult.BestNode, "}")
+	fmt.Println("# Result: BestGPU {", sched.ScheduleResult.BestGPU, "}")
 }
 
 func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int) {
@@ -396,7 +393,10 @@ func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int)
 
 	score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
 		float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
-	fmt.Println("nodescore:", score.NodeScore, " totalscore:", score.TotalScore)
+
+	fmt.Printf("(policy 1) node-gpu-score-weight : nodeWeight=%.1f, gpuWeight=%.1f\n", sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
+	fmt.Printf("# Total Score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d\n", score.NodeScore,
+		sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore)
 }
 
 func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU int) {
@@ -414,7 +414,7 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 	})
 
 	for _, a := range sortedGPUScore {
-		fmt.Println("- ", a.UUID, " | ", a.GPUScore, " | ", a.IsFiltered, "|")
+		fmt.Println("<test> ", a.UUID, " | ", a.GPUScore, " | ", a.IsFiltered, "|")
 	}
 
 	//NVLink GPU 고려 X
@@ -432,19 +432,20 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 
 	//NVLink GPU 고려 O
 	sched.checkNVLinkGPU(nodeinfo)
+
 	//NVLink Score순으로 정렬
 	type ns []r.NVLink
 	sortedNVLinkScore := make(ns, 0, len(nodeinfo.NodeMetric.NVLinkList))
 	for _, n := range nodeinfo.NodeMetric.NVLinkList {
-		sortedNVLinkScore = append(sortedNVLinkScore, n)
+		sortedNVLinkScore = append(sortedNVLinkScore, *n)
 	}
 	sort.SliceStable(sortedNVLinkScore, func(i, j int) bool {
 		return sortedNVLinkScore[i].Score > sortedNVLinkScore[j].Score
 	})
 
-	for _, nvl := range sortedNVLinkScore {
-		fmt.Println("NVLink GPU Pair: ", nvl.GPU1, "|", nvl.GPU2, "|", nvl.Score)
-	}
+	// for _, nvl := range sortedNVLinkScore {
+	// 	fmt.Println("<test> NVLink GPU Pair: ", nvl.GPU1, "|", nvl.GPU2, "|", nvl.Score)
+	// }
 
 	gpucnt := requestedGPU
 	for gpucnt > 0 {
@@ -459,51 +460,50 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 				}
 			}
 		} else { //nvlink 쌍 선택 가능
-			var a1 []string
-			s1, g1, i1 := float64(0), "", -1
-			var i2 []int
-			s2, g2 := float64(0), ""
-
 			//NVLink쌍 점수 계산
+			var nvlink_pair []string
+			nvlink_score, nvlink_selected, nvlink_index := float64(0), "", -1
 			for i, nvl := range sortedNVLinkScore {
 				if !nvl.IsFiltered && !nvl.IsSelected {
-					fmt.Println("**", nvl.Score, " ", nvl.GPU1, " ", nvl.GPU2)
-					s1 = float64(nvl.Score)
-					g1 += nvl.GPU1 + "," + nvl.GPU2 + ","
-					i1 = i
-					a1 = append(a1, nvl.GPU1, nvl.GPU2)
+					// fmt.Println("**", nvl.Score, " ", nvl.GPU1, " ", nvl.GPU2)
+					nvlink_score = float64(nvl.Score)
+					nvlink_selected += nvl.GPU1 + "," + nvl.GPU2 + ","
+					nvlink_index = i
+					nvlink_pair = append(nvlink_pair, nvl.GPU1, nvl.GPU2)
 					break
 				}
 			}
 
 			//상위 GPU쌍 점수 계산
+			var high_gpu []int
+			high_score, high_selected := float64(0), ""
 			for j, gpu := range sortedGPUScore {
 				if !gpu.IsFiltered && !gpu.IsSelected {
-					s2 += float64(gpu.GPUScore)
-					g2 += gpu.UUID + ","
-					i2 = append(i2, j)
+					high_score += float64(gpu.GPUScore)
+					high_selected += gpu.UUID + ","
+					high_gpu = append(high_gpu, j)
 				}
-				if len(i2) == 2 {
-					s2 /= 2
+				if len(high_gpu) == 2 {
+					high_score /= 2
+					// fmt.Println("***", high_score)
 					break
 				}
 			}
 
-			if s1 >= s2 { //NVLink select available
-				totalGPUScore += float64(s1) * float64(2/float64(requestedGPU))
-				bestGPU += g1 + ","
-				sortedNVLinkScore[i1].IsSelected = true
+			if nvlink_score >= high_score { //NVLink쌍 선택
+				totalGPUScore += float64(nvlink_score) * float64(2/float64(requestedGPU))
+				bestGPU += nvlink_selected + ","
+				sortedNVLinkScore[nvlink_index].IsSelected = true
 				for _, gpu := range sortedGPUScore {
-					if gpu.UUID == a1[0] || gpu.UUID == a1[1] {
+					if gpu.UUID == nvlink_pair[0] || gpu.UUID == nvlink_pair[1] {
 						gpu.IsSelected = true
 					}
 				}
-				fmt.Println("**", totalGPUScore, " ", a1[0], " ", a1[1])
-			} else {
-				totalGPUScore += float64(s2) * float64(2/float64(requestedGPU))
-				bestGPU += g2 + ","
-				sortedGPUScore[i2[0]].IsSelected = true
-				sortedGPUScore[i2[1]].IsSelected = true
+			} else { //상위 GPU쌍 선택
+				totalGPUScore += float64(high_score) * float64(2/float64(requestedGPU))
+				bestGPU += high_selected + ","
+				sortedGPUScore[high_gpu[0]].IsSelected = true
+				sortedGPUScore[high_gpu[1]].IsSelected = true
 			}
 
 			gpucnt -= 2
@@ -516,8 +516,8 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 }
 
 func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
-	fmt.Println("#20. Check NVLink GPU")
-
+	fmt.Println("S#20. Check NVLink GPU")
+	fmt.Printf("(policy 2) nvlink-weight-percentage : %d %%\n", sched.SchedulingPolicy.NVLinkWeightPercentage)
 	for _, nvl := range nodeinfo.NodeMetric.NVLinkList {
 		if nodeinfo.PluginResult.GPUScores[nvl.GPU1].IsFiltered ||
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].IsFiltered {
@@ -527,6 +527,9 @@ func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 		score := float64(nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore+
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
 		nvl.Score = int(math.Round(score * float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100)))
+		fmt.Printf("# linked gpu{%s}:gpu{%s} score = (%d+%d) / 2 * %.2f = %d\n",
+			nvl.GPU1, nvl.GPU2, nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore,
+			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score)
 	}
 }
 

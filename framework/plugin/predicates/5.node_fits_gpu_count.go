@@ -12,22 +12,18 @@ func (pl NodeFitsGPUCount) Name() string {
 }
 
 func (pl NodeFitsGPUCount) Debugg() {
-	fmt.Println("#5. ", pl.Name())
+	fmt.Println("F#5. ", pl.Name())
 }
 
 func (pl NodeFitsGPUCount) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if nodeinfo.PluginResult.AvailableGPUCount < newPod.RequestedResource.GPUCount {
-				fmt.Println("//gpu", nodeinfo.PluginResult.AvailableGPUCount, newPod.RequestedResource.GPUCount)
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				fmt.Println("<test> ", nodeinfo.PluginResult.AvailableGPUCount, newPod.RequestedResource.GPUCount)
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }

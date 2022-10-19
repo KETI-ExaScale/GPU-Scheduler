@@ -27,7 +27,7 @@ func (pl BalancedNodeResourceAllocation) Name() string {
 }
 
 func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#8.", pl.Name())
+	fmt.Println("S#8. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -38,22 +38,28 @@ func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
 func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			allocable := nodeinfo.Allocatable
+			// allocable := nodeinfo.Allocatable
+			milliCPUFree := nodeinfo.NodeMetric.MilliCPUTotal - nodeinfo.NodeMetric.MilliCPUUsed
+			memoryFree := nodeinfo.NodeMetric.MemoryTotal - nodeinfo.NodeMetric.MemoryUsed
+			storageFree := nodeinfo.NodeMetric.StorageTotal - nodeinfo.NodeMetric.StorageUsed
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
 			std := float64(0)
 
-			cpuFraction := math.Min(fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU), 1)
-			memoryFraction := math.Min(fractionOfCapacity(requested.Memory, allocable.Memory), 1)
-			volumeFraction := math.Min(fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage), 1)
-			fmt.Println("&", cpuFraction, " ", memoryFraction, " ", volumeFraction)
-			mean := (cpuFraction + memoryFraction + volumeFraction) / float64(3)
+			// cpuFraction1 := math.Min(fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU), 1)
+			// memoryFraction1 := math.Min(fractionOfCapacity(requested.Memory, allocable.Memory), 1)
+			// volumeFraction1 := math.Min(fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage), 1)
+
+			cpuFraction := math.Min(fractionOfCapacity(requested.MilliCPU, milliCPUFree), 1)
+			memoryFraction := math.Min(fractionOfCapacity(requested.Memory, memoryFree), 1)
+			storageFraction := math.Min(fractionOfCapacity(requested.EphemeralStorage, storageFree), 1)
+			mean := (cpuFraction + memoryFraction + storageFraction) / float64(3)
 			variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) +
 				((memoryFraction - mean) * (memoryFraction - mean)) +
-				((volumeFraction - mean) * (volumeFraction - mean))) / float64(3))
+				((storageFraction - mean) * (storageFraction - mean))) / float64(3))
 			std = math.Sqrt(variance / float64(3))
-			nodeScore = float64(int(float64(1)-std) * r.MaxScore)
-			fmt.Println("&", std, " ", nodeScore)
+			nodeScore = (float64(1) - std) * float64(r.MaxScore/20)
+			// fmt.Println(cpuFraction, memoryFraction, storageFraction, mean, variance, std, nodeScore)
 			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore))
 		}
 	}

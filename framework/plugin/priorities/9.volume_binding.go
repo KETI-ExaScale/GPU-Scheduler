@@ -27,7 +27,7 @@ func (pl VolumeBinding) Name() string {
 }
 
 func (pl VolumeBinding) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#9.", pl.Name())
+	fmt.Println("S#9. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)

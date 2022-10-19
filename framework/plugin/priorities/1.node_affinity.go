@@ -32,7 +32,7 @@ func (pl NodeAffinity) Name() string {
 }
 
 func (pl NodeAffinity) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#1.", pl.Name())
+	fmt.Println("S#1. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -63,8 +63,6 @@ func (pl NodeAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 			if state.preferredNodeAffinity != nil {
 				count += state.preferredNodeAffinity.Score(nodeinfo.Node())
 			}
-
-			fmt.Println("scoring>node_affinity: ", count, "scode, node: ", nodeinfo.Node().Name)
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count)))
 		}
 	}

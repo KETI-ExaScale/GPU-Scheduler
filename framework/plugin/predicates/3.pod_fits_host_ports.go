@@ -14,7 +14,7 @@ func (pl PodFitsHostPorts) Name() string {
 }
 
 func (pl PodFitsHostPorts) Debugg() {
-	fmt.Println("#3. ", pl.Name())
+	fmt.Println("F#3. ", pl.Name())
 }
 
 func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -24,19 +24,15 @@ func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 		return
 	}
 
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if !fitsPorts(wantPorts, nodeinfo) {
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }
 
 // getContainerPorts returns the used host ports of Pods: if 'port' was used, a 'port:true' pair

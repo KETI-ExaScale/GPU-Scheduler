@@ -12,11 +12,10 @@ func (pl PodToleratesNodeTaints) Name() string {
 }
 
 func (pl PodToleratesNodeTaints) Debugg() {
-	fmt.Println("#8. ", pl.Name())
+	fmt.Println("F#8. ", pl.Name())
 }
 
 func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			for _, taint := range nodeinfo.Node().Spec.Taints {
@@ -28,15 +27,12 @@ func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.Qu
 					}
 				}
 				if !tolerated {
-					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
+					newPod.FilterNode(pl.Name())
 					break
 				}
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }

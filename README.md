@@ -13,6 +13,7 @@ It implements GPU sharing between containers and supports the MPS operation of G
 #### required module
 - *[GPU-Metric-Collector](https://github.com/KETI-ExaScale/GPU-Metric-Collector)*
 - *[GPU-Device-Plugin](https://github.com/KETI-ExaScale/GPU-Device-Plugin)*
+- *[KETI-Cluster-Manager](https://github.com/KETI-ExaScale/KETI-Cluster-Manager)*
 - *[InfluxDB](https://github.com/KETI-ExaScale/InfluxDB)*
 ---
 ## 2.Environment

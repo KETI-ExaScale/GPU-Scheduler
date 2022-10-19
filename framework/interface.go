@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"errors"
 	"fmt"
 	"gpu-scheduler/framework/plugin/predicates"
 	"gpu-scheduler/framework/plugin/priorities"
@@ -43,16 +42,16 @@ func GPUPodSpreadFramework() GPUSchedulerInterface {
 			priorities.NodeResourcesFit{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
-			priorities.NodeMetricBasedScoring{},
+			priorities.NodeMetricAnalysis{},
 			priorities.SetGPUFlopsScore{},
 			priorities.AllocatedPodCountInGPU{},
 			priorities.GPUUtilization{},
 			priorities.GPUMemoryUsage{},
-			priorities.GPUMerticBased{},
+			priorities.GPUMerticAnalysis{},
 			priorities.GPUTemperature{},
 			priorities.GPUPower{},
 			priorities.GPUBandwidth{},
-			priorities.GPUDirectStoragePriority{},
+			// priorities.GPUDirectStoragePriority{},
 			priorities.BalancedGPUProcessType{},
 		},
 	}
@@ -86,12 +85,12 @@ func GPUPodBinpackFramework() GPUSchedulerInterface {
 			priorities.NodeResourcesFit{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
-			priorities.NodeMetricBasedScoring{},
+			priorities.NodeMetricAnalysis{},
 			priorities.SetGPUFlopsScore{},
 			// priorities.AllocatedPodCountInGPU{},
 			priorities.GPUUtilization{},
 			priorities.GPUMemoryUsage{},
-			priorities.GPUMerticBased{},
+			priorities.GPUMerticAnalysis{},
 			// priorities.GPUTemperature{},
 			// priorities.GPUPower{},
 			// priorities.GPUBandwidth{},
@@ -127,7 +126,7 @@ func NonGPUPodFramework() GPUSchedulerInterface { //이걸 쓸일 있을까..?
 			priorities.NodeResourcesFit{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
-			priorities.NodeMetricBasedScoring{},
+			priorities.NodeMetricAnalysis{},
 		},
 	}
 }
@@ -138,12 +137,12 @@ func InitNodeScoreFramework() GPUSchedulerInterface {
 		Scoring: []ScorePlugin{
 			priorities.NodeResourcesFit{},
 			priorities.BalancedNodeResourceAllocation{},
-			priorities.NodeMetricBasedScoring{},
+			priorities.NodeMetricAnalysis{},
 			priorities.SetGPUFlopsScore{},
 			priorities.AllocatedPodCountInGPU{},
 			priorities.GPUUtilization{},
 			priorities.GPUMemoryUsage{},
-			priorities.GPUMerticBased{},
+			priorities.GPUMerticAnalysis{},
 			priorities.GPUTemperature{},
 			priorities.GPUPower{},
 			priorities.GPUBandwidth{},
@@ -173,19 +172,19 @@ type ScorePlugin interface {
 }
 
 func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
-	fmt.Println("[STEP 1] Run Filtering Plugins")
+	fmt.Println("[STEP 2] Run Filtering Plugins")
 	for _, fp := range sf.Filtering {
 		fp.Debugg()
 		fp.Filter(nodeInfoCache, newPod)
 		if nodeInfoCache.AvailableNodeCount == 0 {
-			return errors.New("there isn't any node to schedule")
+			return fmt.Errorf("there isn't any node to schedule")
 		}
 	}
 	return nil
 }
 
 func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
-	fmt.Println("[STEP 2] Run Scoring Plugins")
+	fmt.Println("[STEP 3] Run Scoring Plugins")
 	for _, sp := range sf.Scoring {
 		sp.Score(nodeInfoCache, newPod)
 		sp.Debugg(nodeInfoCache)

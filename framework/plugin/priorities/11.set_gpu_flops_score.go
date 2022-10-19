@@ -26,7 +26,7 @@ func (pl SetGPUFlopsScore) Name() string {
 }
 
 func (pl SetGPUFlopsScore) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#11.", pl.Name())
+	fmt.Println("S#11.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {

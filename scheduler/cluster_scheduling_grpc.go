@@ -20,11 +20,10 @@ type InitStruct struct {
 }
 
 func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
-	fmt.Println("#Init my cluster manager called")
+	fmt.Println("- Init My Cluster Manager Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("<error> update node score1 - ", err)
 		return false, err
 	}
 	defer conn.Close()
@@ -33,7 +32,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 
 	var requestMessageList []*pb.RequestMessage
 	for _, info := range infoList {
-		fmt.Println("#Init Info (", info.NodeName, ",", info.Score, ",", info.GPUCount, ")")
+		fmt.Println("# Init Info (", info.NodeName, ",", info.Score, ",", info.GPUCount, ")")
 		var requestMessage = &pb.RequestMessage{
 			NodeName:  info.NodeName,
 			NodeScore: info.Score,
@@ -48,7 +47,6 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 	p, err := grpcClient.InitMyCluster(ctx, initRequestMessage)
 	if err != nil {
 		cancel()
-		fmt.Println("<error> update node score2 - ", err)
 		return false, err
 	}
 
@@ -60,11 +58,10 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 }
 
 func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, error) {
-	fmt.Println("#Get Best Cluster Called")
+	fmt.Println("- Get Best Cluster Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("<error> get best cluster1 - ", err)
 		return "", false, err
 	}
 	defer conn.Close()
@@ -78,7 +75,6 @@ func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, e
 	p, err := grpcClient.RequestClusterScheduling(ctx, requestMessage)
 	if err != nil {
 		cancel()
-		fmt.Println("<error> get best cluster2 - ", err)
 		return "", false, err
 	}
 

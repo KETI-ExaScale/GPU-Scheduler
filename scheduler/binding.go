@@ -17,7 +17,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,24 +36,23 @@ func patchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 
 //write GPU_ID to annotation
 func patchPodAnnotation(bestGPU string) error {
-	fmt.Println("[step 5-1] Write GPU UUID in Pod Annotation")
+	fmt.Println("- write gpu uuid in pod annotation")
 
 	patchedAnnotationBytes, err := patchPodAnnotationUUID(bestGPU)
 	if err != nil {
-		return fmt.Errorf("failed to generate patched annotations,reason: %v", err)
+		return fmt.Errorf("<error> failed to generate annotations - %s", err)
 	}
 
 	_, err = Scheduler.NodeInfoCache.HostKubeClient.CoreV1().Pods(Scheduler.NewPod.Pod.Namespace).Patch(context.TODO(), Scheduler.NewPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 	if err != nil {
-		fmt.Println("patchPodAnnotation error: ", err)
-		return err
+		return fmt.Errorf("<error> failed to patch annotations - %s", err)
 	}
 
 	return nil
 }
 
 func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, result r.ScheduleResult) {
-	fmt.Println("[STEP 5] Binding {", newpod.Pod.Name, "}")
+	fmt.Println("[STEP 5] Binding Pod To Target Node {", newpod.Pod.Name, "}")
 
 	_, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -64,14 +62,16 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	// }
 
 	ip := sched.ClusterManagerHost
-	reScore := int(float64(result.TotalScore) * 0.9) //노드 스코어를 줄여야함 -> 구체적으로
-	fmt.Println("score: ", result.TotalScore, ",", reScore)
-	success, err := UpdateNodeScore(ip, result.BestNode, reScore)
-	if err != nil {
-		fmt.Println("<error> update node score grpc error-", err)
-	}
-	if !success {
-		fmt.Println("<error> failed update node score")
+	if ip != "" {
+		reScore := int(float64(result.TotalScore) * 0.9) //노드 스코어를 줄여야함 -> 구체적으로
+		fmt.Println("<test> score: ", result.TotalScore, ",", reScore)
+		success, err := UpdateNodeScore(ip, result.BestNode, reScore)
+		if err != nil {
+			fmt.Println("<error> update node score grpc error - ", err)
+		}
+		if !success {
+			fmt.Println("<error> failed update node score")
+		}
 	}
 
 	//파드 스펙에 GPU 업데이트
@@ -79,12 +79,10 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 		err := patchPodAnnotation(result.BestGPU)
 		if err != nil {
 			sched.SchedulingQueue.Add_BackoffQ(&newpod)
-			fmt.Println("failed to generate patched annotations,reason: ", err)
+			fmt.Println("<error> failed to generate patched annotations - ", err)
 			return
 		}
 	}
-
-	fmt.Println("--------------------------------------------------------------------------------------------------------------------------")
 
 	binding := &corev1.Binding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -101,10 +99,10 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 		},
 	}
 
-	err = sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
+	err := sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
+		fmt.Println("<error> binding error - ", err)
 		sched.SchedulingQueue.Add_BackoffQ(&newpod)
-		fmt.Println("+++++binding error: ", err, "+++++")
 		return
 	}
 
@@ -112,7 +110,6 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	// message := fmt.Sprintf("<Binding Success> Successfully assigned %s", sched.NewPod.Pod.Name)
 	// event := newpod.MakeBindEvent(message)
 	// fmt.Println("<Binding Success> Successfully assigned", newpod.Pod.Name)
-	fmt.Println("+++++", time.Now().Format("2006-01-02 15:04:05"), "Successfully assigned", newpod.Pod.Name, "+++++")
-
+	fmt.Printf("-----:: Successfully Assigned Pod {%s} ::-----\n", newpod.Pod.Name)
 	// PostEvent(event)
 }

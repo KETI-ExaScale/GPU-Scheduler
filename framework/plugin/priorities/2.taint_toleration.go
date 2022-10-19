@@ -29,7 +29,7 @@ func (pl TaintToleration) Name() string {
 }
 
 func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#2.", pl.Name())
+	fmt.Println("S#2. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
@@ -46,7 +46,7 @@ func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodI
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			score := int64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, state.tolerationsPreferNoSchedule))
-			fmt.Println("scoring>taint_toleration: ", score, "scode, node: ", nodeinfo.Node().Name)
+			// fmt.Println("scoring>taint_toleration: ", score, "scode, node: ", nodeinfo.Node().Name)
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score)))
 		}
 	}

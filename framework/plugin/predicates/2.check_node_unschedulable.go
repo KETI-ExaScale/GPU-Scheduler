@@ -15,11 +15,10 @@ func (pl CheckNodeUnschedulable) Name() string {
 }
 
 func (pl CheckNodeUnschedulable) Debugg() {
-	fmt.Println("#2. ", pl.Name())
+	fmt.Println("F#2. ", pl.Name())
 }
 
 func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			podToleratesUnschedulable := v1helper.TolerationsTolerateTaint(newPod.Pod.Spec.Tolerations, &corev1.Taint{
@@ -28,13 +27,10 @@ func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.Qu
 			})
 
 			if nodeinfo.Node().Spec.Unschedulable && !podToleratesUnschedulable {
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }

@@ -30,7 +30,7 @@ package predicates
 // }
 
 // func (pl InterPodAffinity) Debugg() {
-// 	fmt.Println("#10.", pl.Name())
+// 	fmt.Println("F#10.", pl.Name())
 // }
 
 // // PreFilter invoked at the prefilter extension point.
@@ -80,18 +80,21 @@ package predicates
 // 			if !satisfyPodAffinity(state, nodeinfo) {
 // 				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonAffinityRulesNotMatch)
 // 				nodeInfoCache.NodeCountDown()
+//              newPod.FilterNode(pl.Name())
 // 				continue
 // 			}
 
 // 			if !satisfyPodAntiAffinity(state, nodeinfo) {
 // 				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonAntiAffinityRulesNotMatch)
 // 				nodeInfoCache.NodeCountDown()
+//              newPod.FilterNode(pl.Name())
 // 				continue
 // 			}
 
 // 			if !satisfyExistingPodsAntiAffinity(state, nodeinfo) {
 // 				nodeinfo.PluginResult.FilterNode(pl.Name() + ErrReasonExistingAntiAffinityRulesNotMatch)
 // 				nodeInfoCache.NodeCountDown()
+//              newPod.FilterNode(pl.Name())
 // 				continue
 // 			}
 // 		}

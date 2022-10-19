@@ -30,7 +30,7 @@ func (pl PodTopologySpread) Name() string {
 }
 
 func (pl PodTopologySpread) Debugg() {
-	fmt.Println("#9.", pl.Name())
+	fmt.Println("F#9. ", pl.Name())
 }
 
 type topologySpreadConstraint struct {
@@ -131,16 +131,15 @@ func (pl *PodTopologySpread) calPreFilterState(pod *v1.Pod, cache *r.NodeCache) 
 }
 
 func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	fmt.Print("- nodes: {")
-
 	s, err := pl.calPreFilterState(newPod.Pod, nodeInfoCache)
 
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if err != nil {
 				fmt.Println("calPreFilterState error")
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 				continue
 			}
 
@@ -155,8 +154,9 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 				tpVal, ok := nodeinfo.Node().Labels[c.TopologyKey]
 				if !ok {
 					fmt.Println("Node doesn't have required label", "node", nodeName, "label", tpKey)
-					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
+					newPod.FilterNode(pl.Name())
 					continue
 				}
 
@@ -172,8 +172,9 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 				minMatchNum, err := s.minMatchNum(tpKey, c.MinDomains, pl.enableMinDomainsInPodTopologySpread)
 				if err != nil {
 					fmt.Println(err, "Internal error occurred while retrieving value precalculated in PreFilter", "topologyKey", tpKey, "paths", s.TpKeyToCriticalPaths)
-					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
+					newPod.FilterNode(pl.Name())
 					continue
 				}
 
@@ -184,17 +185,14 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 				skew := matchNum + selfMatchNum - minMatchNum
 				if skew > int(c.MaxSkew) {
 					fmt.Println("Node failed spreadConstraint: matchNum + selfMatchNum - minMatchNum > maxSkew", "node", nodeName, "topologyKey", tpKey, "matchNum", matchNum, "selfMatchNum", selfMatchNum, "minMatchNum", minMatchNum, "maxSkew", c.MaxSkew)
-					nodeinfo.PluginResult.FilterNode(pl.Name())
+					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
+					newPod.FilterNode(pl.Name())
 					continue
 				}
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }
 
 func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {

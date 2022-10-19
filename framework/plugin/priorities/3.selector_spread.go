@@ -43,7 +43,7 @@ func (pl SelectorSpread) Name() string {
 }
 
 func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#3.", pl.Name())
+	fmt.Println("S#3. ", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)

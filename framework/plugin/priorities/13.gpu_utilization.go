@@ -26,7 +26,7 @@ func (pl GPUUtilization) Name() string {
 }
 
 func (pl GPUUtilization) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#13.", pl.Name())
+	fmt.Println("S#13.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {

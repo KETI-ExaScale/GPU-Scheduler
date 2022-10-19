@@ -19,7 +19,6 @@ package resourceinfo
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -73,25 +71,15 @@ func NewNodeInfoCache(hostKubeClient *kubernetes.Clientset) *NodeCache {
 func (c *NodeCache) InitNodeInfoCache( /*scheduliungQ *SchedulingQueue*/ ) error {
 	nodes, err := c.HostKubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Println("<error> Get Nodes In Cluster Error-", err)
 		return err
 	}
-	// pods, _ := c.HostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 
 	for _, node := range nodes.Items {
-		if !IsMasterNode(&node) {
-			fmt.Println("[node name]: ", node.Name)
-			c.AddNode(node) //nodeinfolist에 node 추가, imagestate에 이미지 추가
-		}
+		c.AddNode(&node) // Nodeinfolist > Node, Imagestate
+		// if !IsMasterNode(&node) { // Not Schedule To Master Node
+		// 	c.AddNode(node)
+		// }
 	}
-
-	// for _, pod := range pods.Items {
-	// 	podPtr := (*corev1.Pod)(unsafe.Pointer(&pod))
-	// 	if pod.Spec.NodeName == "" {
-	// 		fmt.Println("[pod name]: ", pod.Name)
-	// 		scheduliungQ.Add_AvtiveQ(podPtr)
-	// 	}
-	// }
 
 	return nil
 }
@@ -113,63 +101,61 @@ func IsMasterNode(node *corev1.Node) bool {
 
 //metric update, score init
 func (c *NodeCache) DumpCache() error {
-	fmt.Println("[Dump Node Info Cache]")
+	fmt.Println("\n-----:: Dump Node Info Cache ::-----")
 
-	fmt.Println("(0) node count(availavle/total): (", c.AvailableNodeCount, "/", c.TotalNodeCount, ")")
+	fmt.Println("# total node count(available/total): (", c.AvailableNodeCount, "/", c.TotalNodeCount, ")")
 	for nodeName, nodeInfo := range c.NodeInfoList {
-		fmt.Println("===Node List===")
-		fmt.Println("(1) node name {", nodeName, "}")
+		fmt.Println("*[nodeName : ", nodeName, "]")
 
-		fmt.Println("(2) pods: ")
-		a := 1
-		for _, pod := range nodeInfo.Pods {
-			fmt.Println("- ", a, ":", pod.Pod.Name)
-			a++
+		if !nodeInfo.PluginResult.IsFiltered {
+			// fmt.Println("(2) pods: ")
+			// for _, pod := range nodeInfo.Pods {
+			// 	fmt.Println("# ", pod.Pod.Name)
+			// }
+
+			// fmt.Print("(3) image: ")
+			// for imageName, _ := range nodeInfo.ImageStates {
+			// 	fmt.Print(imageName, ", ")
+			// }
+			// fmt.Println()
+
+			fmt.Println("# Num Of Images: ", len(nodeInfo.ImageStates))
+
+			// fmt.Println("(4) GPU Names: ")
+			// for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
+			// 	fmt.Println("# ", i, ":", uuid)
+			// }
+
+			fmt.Println("# Total GPU Count: ", nodeInfo.NodeMetric.TotalGPUCount)
+
+			fmt.Print("# Used Ports: [")
+			for port, _ := range nodeInfo.UsedPorts {
+				fmt.Print(port, ", ")
+			}
+			fmt.Println("]")
+
+			fmt.Println("# Node Memory(Used/Total): ", nodeInfo.NodeMetric.MemoryUsed, "/", nodeInfo.NodeMetric.MemoryTotal)
+			fmt.Println("# Node CPU(Used/Total): ", nodeInfo.NodeMetric.MilliCPUUsed, "/", nodeInfo.NodeMetric.MilliCPUTotal)
+			fmt.Println("# Node Storage(Used/Total): ", nodeInfo.NodeMetric.StorageUsed, "/", nodeInfo.NodeMetric.StorageTotal)
+
+			fmt.Println("(metric 1) NVLink List: ")
+			for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
+				fmt.Println("[", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Lane, "]")
+			}
+
+			for gpuName, gpu := range nodeInfo.GPUMetrics {
+				fmt.Println("**[gpuName : ", gpuName, "]")
+				fmt.Println("(metric 2) GPU Temperature: ", gpu.GPUTemperature)
+				fmt.Println("(metric 3) GPU Architecture: ", gpu.GPUArch)
+				fmt.Println("(metric 4) GPU Flops: ", gpu.GPUFlops)
+				fmt.Println("(metric 5) GPU Memory(Free/Used/Total): ", gpu.GPUMemoryFree, "/", gpu.GPUMemoryUsed, "/", gpu.GPUMemoryTotal)
+				fmt.Println("(metric 6) GPU Power(Free/Total): ", gpu.GPUPowerUsed, "/", gpu.GPUPowerUsed)
+				fmt.Println("(metric 7) GPU Utilization: ", gpu.GPUUtil)
+				fmt.Println("(metric 8) GPU PodCount: ", gpu.PodCount)
+			}
+		} else {
+			fmt.Println("-> Filtered Node")
 		}
-
-		// fmt.Print("(3) image: ")
-		// for imageName, _ := range nodeInfo.ImageStates {
-		// 	fmt.Print(imageName, ", ")
-		// }
-		// fmt.Println()
-
-		fmt.Println("(3) num of image: ", len(nodeInfo.ImageStates))
-
-		// fmt.Println("(4) GPU Names: ")
-		// for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
-		// 	fmt.Println("- ", i, ":", uuid)
-		// }
-
-		fmt.Println("(5) Total GPU Count: ", nodeInfo.NodeMetric.TotalGPUCount)
-
-		fmt.Print("(6) Used Ports: ")
-		for port, _ := range nodeInfo.UsedPorts {
-			fmt.Print(port, ", ")
-		}
-		fmt.Println()
-
-		fmt.Println("(7) NVLink List: ")
-		for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
-			fmt.Println("-", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Lane)
-		}
-		fmt.Println()
-
-		fmt.Println("(8) Node Memory(Used/Total): ", nodeInfo.NodeMetric.MemoryUsed, "/", nodeInfo.NodeMetric.MemoryTotal)
-		fmt.Println("(9) Node CPU(Used/Total): ", nodeInfo.NodeMetric.MilliCPUUsed, "/", nodeInfo.NodeMetric.MilliCPUTotal)
-		fmt.Println("(10) Node Storage(Used/Total): ", nodeInfo.NodeMetric.StorageUsed, "/", nodeInfo.NodeMetric.StorageTotal)
-
-		fmt.Print("(12) gpu Info: ")
-		for _, gpu := range nodeInfo.GPUMetrics {
-			fmt.Println("---")
-			fmt.Print("GPU Name: ", gpu.GPUName)
-			fmt.Print("GPU Architecture: ", gpu.GPUArch)
-			fmt.Print("GPU Flops: ", gpu.GPUFlops)
-			fmt.Print("GPU Memory(Free/Used/Total): ", gpu.GPUMemoryFree, "/", gpu.GPUMemoryUsed, "/", gpu.GPUMemoryTotal)
-			fmt.Print("GPU Power(Free/Total): ", gpu.GPUPowerUsed, "/", gpu.GPUPowerUsed)
-			fmt.Print("GPU Utilization: ", gpu.GPUUtil)
-			fmt.Print("GPU PodCount: ", gpu.PodCount)
-		}
-		fmt.Println()
 	}
 
 	return nil
@@ -177,6 +163,10 @@ func (c *NodeCache) DumpCache() error {
 
 func (c *NodeCache) NodeCountDown() {
 	c.AvailableNodeCount--
+}
+
+func (c *NodeCache) NodeCountUP() {
+	c.AvailableNodeCount++
 }
 
 type PodState struct {
@@ -218,7 +208,7 @@ func (cache *NodeCache) RemovePodStates(pod *corev1.Pod) {
 		}
 		delete(cache.PodStates, key)
 	} else {
-		fmt.Println("there's no pod status {", pod.Name, "}")
+		return
 	}
 }
 
@@ -242,12 +232,17 @@ func (cache *NodeCache) AddPodState(pod corev1.Pod, s string) error {
 	if err != nil {
 		return err
 	}
-	ps := &PodState{
-		Pod:      &pod,
-		deadline: nil,
-		State:    s,
+
+	if ok, _ := cache.CheckPodStateExist(&pod); ok {
+		cache.UpdatePodState(&pod, s)
+	} else {
+		ps := &PodState{
+			Pod:      &pod,
+			deadline: nil,
+			State:    s,
+		}
+		cache.PodStates[key] = ps
 	}
-	cache.PodStates[key] = ps
 
 	return nil
 }
@@ -259,6 +254,7 @@ func (cache *NodeCache) UpdatePodState(pod *corev1.Pod, s string) error {
 	}
 
 	cache.PodStates[key].State = s
+	cache.PodStates[key].Pod = pod
 	return nil
 }
 
@@ -267,13 +263,12 @@ func (cache *NodeCache) CheckPodStateExist(pod *corev1.Pod) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	// for a, b := range cache.PodStates {
-	// 	fmt.Println("|", a, "|", b.Pod.Name, "|", b.State, "|")
-	// }
+
 	if podState, ok := cache.PodStates[key]; ok {
 		return true, podState.State
+	} else {
+		return false, ""
 	}
-	return false, ""
 }
 
 // // NodeCount returns the number of nodes in the cache.
@@ -352,42 +347,22 @@ func (cache *NodeCache) CheckPodStateExist(pod *corev1.Pod) (bool, string) {
 // }
 
 // Assumes that lock is already acquired.
-func (cache *NodeCache) addPod(pod *corev1.Pod, status string) error {
-	// key, err := GetPodKey(pod)
-	// if err != nil {
-	// 	return err
-	// }
-
+func (cache *NodeCache) addPod(pod *corev1.Pod) {
 	n, ok := cache.NodeInfoList[pod.Spec.NodeName]
 	if ok {
 		n.AddPod(*pod)
-		cache.AddPodState(*pod, BindingFinished)
-		// cache.moveNodeInfoToHead(pod.Spec.NodeName)
-		// ps := &podState{
-		// 	pod: pod,
-		// }
-		// cache.PodStates[key] = ps
-		// if assumePod {
-		// 	cache.assumedPods.Insert(key)
-		// }
 	}
-
-	return nil
 }
 
 // Assumes that lock is already acquired.
 func (cache *NodeCache) updatePod(oldPod, newPod *corev1.Pod) error {
 
-	ok, oldState := cache.CheckPodStateExist(oldPod)
-	if !ok {
-		cache.AddPodState(*oldPod, Pending)
-	}
-
 	if err := cache.removePod(oldPod); err != nil {
 		return err
 	}
 
-	return cache.addPod(newPod, oldState)
+	cache.addPod(newPod)
+	return nil
 }
 
 // Assumes that lock is already acquired.
@@ -395,14 +370,9 @@ func (cache *NodeCache) updatePod(oldPod, newPod *corev1.Pod) error {
 // removed and there are no more pods left in the node, cleans up the node from
 // the cache.
 func (cache *NodeCache) removePod(pod *corev1.Pod) error {
-	key, err := GetPodKey(pod)
-	if err != nil {
-		return err
-	}
-
 	n, ok := cache.NodeInfoList[pod.Spec.NodeName]
 	if !ok {
-		klog.ErrorS(nil, "Node not found when trying to remove pod", "node", klog.KRef("", pod.Spec.NodeName), "pod", klog.KObj(pod))
+		return fmt.Errorf("Node not found when trying to remove pod{%s}", pod.Name)
 	} else {
 		if err := n.RemovePod(pod); err != nil {
 			return err
@@ -411,14 +381,10 @@ func (cache *NodeCache) removePod(pod *corev1.Pod) error {
 			cache.removeNodeInfoFromList(pod.Spec.NodeName)
 		}
 	}
-
-	delete(cache.PodStates, key)
-	// delete(cache.assumedPods, key)
 	return nil
 }
 
-func (cache *NodeCache) AddPod(pod *corev1.Pod) error {
-	fmt.Println("cache.AddPod: ", pod.Name)
+func (cache *NodeCache) AddPod(pod *corev1.Pod, state string) error {
 	key, err := GetPodKey(pod)
 	if err != nil {
 		return err
@@ -430,60 +396,46 @@ func (cache *NodeCache) AddPod(pod *corev1.Pod) error {
 	_, ok := cache.PodStates[key]
 	switch {
 	case ok:
-		// if cache.assumedPods.Has(key) {
-		// 	if currState.pod.Spec.NodeName != pod.Spec.NodeName {
-		// 		// The pod was added to a different node than it was assumed to.
-		// 		klog.InfoS("Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.pod.Spec.NodeName))
-		// 		if err = cache.updatePod(currState.pod, pod); err != nil {
-		// 			klog.ErrorS(err, "Error occurred while updating pod")
-		// 		}
-		// 	} else {
-		// 		delete(cache.assumedPods, key)
-		// 		cache.PodStates[key].deadline = nil
-		// 		cache.PodStates[key].pod = pod
-		// 	}
-		// } else {
-		// 	cache.PodStates[key].deadline = nil
-		// 	cache.PodStates[key].pod = pod
-		// }
-		fmt.Println("already exist status")
-	case !ok:
-		if err = cache.addPod(pod, BindingFinished); err != nil {
-			klog.ErrorS(err, "Error occurred while adding pod")
+		if err := cache.UpdatePodState(pod, state); err != nil {
+			return err
+		} else {
+			cache.addPod(pod)
 		}
-	default:
-		return fmt.Errorf("pod %v was already in added state", key)
+	case !ok:
+		if err := cache.AddPodState(*pod, state); err != nil {
+			return err
+		} else {
+			cache.addPod(pod)
+		}
 	}
-
 	return nil
 }
 
 func (cache *NodeCache) UpdatePod(oldPod, newPod *corev1.Pod) error {
-	fmt.Println("cache.UpdatePod: ", oldPod.Name)
-	// key, err := GetPodKey(oldPod)
-	// if err != nil {
-	// 	return err
-	// }
+	key, err := GetPodKey(oldPod)
+	if err != nil {
+		return err
+	}
 
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	// currState, ok := cache.PodStates[key]
-	// // An assumed pod won't have Update/Remove event. It needs to have Add event
-	// // before Update event, in which case the state would change from Assumed to Added.
-	// if ok && !cache.assumedPods.Has(key) {
-	// 	if currState.pod.Spec.NodeName != newPod.Spec.NodeName {
-	// 		klog.ErrorS(nil, "Pod updated on a different node than previously added to", "pod", klog.KObj(oldPod))
-	// 		klog.ErrorS(nil, "scheduler cache is corrupted and can badly affect scheduling decisions")
-	// 		os.Exit(1)
-	// 	}
-	return cache.updatePod(oldPod, newPod)
-	// }
-	// return fmt.Errorf("pod %v is not added to scheduler cache, so cannot be updated", key)
+	_, ok := cache.PodStates[key]
+	switch {
+	case ok:
+		cache.UpdatePodState(newPod, BindingFinished)
+		return cache.updatePod(oldPod, newPod)
+	case !ok:
+		if err := cache.AddPodState(*oldPod, BindingFinished); err != nil {
+			return err
+		} else {
+			cache.updatePod(oldPod, newPod)
+		}
+	}
+	return nil
 }
 
 func (cache *NodeCache) RemovePod(pod *corev1.Pod) error {
-	fmt.Println("cache.RemovePod: ", pod.Name)
 	key, err := GetPodKey(pod)
 	if err != nil {
 		return err
@@ -493,19 +445,25 @@ func (cache *NodeCache) RemovePod(pod *corev1.Pod) error {
 	defer cache.mu.Unlock()
 
 	currState, ok := cache.PodStates[key]
-	if !ok {
-		return fmt.Errorf("pod %v is not found in scheduler cache, so cannot be removed from it", key)
+	switch {
+	case ok:
+		cache.RemovePodStates(pod)
+		return cache.removePod(currState.Pod)
+	case !ok:
+		return nil
 	}
-	if currState.Pod.Spec.NodeName != pod.Spec.NodeName {
-		klog.ErrorS(nil, "Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.Pod.Spec.NodeName))
-		if pod.Spec.NodeName != "" {
-			// An empty NodeName is possible when the scheduler misses a Delete
-			// event and it gets the last known state from the informer cache.
-			klog.ErrorS(nil, "scheduler cache is corrupted and can badly affect scheduling decisions")
-			os.Exit(1)
-		}
-	}
-	return cache.removePod(currState.Pod)
+
+	// if currState.Pod.Spec.NodeName != pod.Spec.NodeName {
+	// 	klog.ErrorS(nil, "Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.Pod.Spec.NodeName))
+	// 	if pod.Spec.NodeName != "" {
+	// 		// An empty NodeName is possible when the scheduler misses a Delete
+	// 		// event and it gets the last known state from the informer cache.
+	// 		klog.ErrorS(nil, "scheduler cache is corrupted and can badly affect scheduling decisions")
+	// 		os.Exit(1)
+	// 	}
+	// }
+
+	return nil
 }
 
 // func (cache *NodeCache) IsAssumedPod(pod *corev1.Pod) (bool, error) {
@@ -562,7 +520,7 @@ func (cache *NodeCache) RemovePod(pod *corev1.Pod) error {
 // 	return podState.pod, nil
 // }
 
-func (cache *NodeCache) AddNode(node corev1.Node) error {
+func (cache *NodeCache) AddNode(node *corev1.Node) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
@@ -578,25 +536,25 @@ func (cache *NodeCache) AddNode(node corev1.Node) error {
 		FieldSelector: "spec.nodeName=" + node.Name,
 	})
 
-	// pods, podswithaffinity, podswithrequirequiredantiaffinity, usedport,
-	// pvcrefcounts, requested
-	for _, pod := range podsInNode.Items {
-		fmt.Println("# pod: ", pod.Name)
-		if err := cache.addPod(&pod, BindingFinished); err != nil {
-			klog.ErrorS(err, "Error occurred while adding pod")
-		}
+	// pods, podswithaffinity, podswithrequirequiredantiaffinity
+	// usedport, pvcrefcounts, requested
+	for _, pod := range podsInNode.Items { //add pod in nodeinfocache
+		cache.addPod(&pod)
+		cache.AddPodState(pod, BindingFinished)
 	}
 
-	err := n.InitNodeInfo(&node, cache.HostKubeClient)
-	if err != nil {
-		fmt.Println("<error> cannot init node info - ", err)
-		return err
-	}
+	n.InitNodeInfo(node, cache.HostKubeClient)
+	// //gpu metric collector가 없다면 스케줄링 대상 노드 X
+	// if mc := n.InitNodeInfo(node, cache.HostKubeClient); !mc {
+	// 	n.Avaliable = false
+	// 	return nil
+	// }
 
 	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
-	cache.addNodeImageStates(&node, n)
-	n.SetNode(&node)
-	cache.DumpCache() //확인용
+	cache.addNodeImageStates(node, n)
+	n.SetNode(node)
+
+	// cache.DumpCache() //테스트용
 
 	return nil
 }
@@ -668,7 +626,7 @@ func (cache *NodeCache) addNodeImageStates(node *corev1.Node, nodeInfo *NodeInfo
 		}
 	}
 	nodeInfo.ImageStates = newSum
-	fmt.Println("newsum:", len(newSum))
+	// fmt.Println("newsum:", len(newSum)) //100개
 }
 
 // removeNodeImageStates removes the given node record from image entries having the node
@@ -693,6 +651,14 @@ func (cache *NodeCache) removeNodeImageStates(node *corev1.Node) {
 			}
 		}
 	}
+}
+
+func (c *NodeCache) GPUPodCountDown(pod *corev1.Pod) {
+	c.NodeInfoList[pod.Spec.NodeName].gpuPodCountDown(pod)
+}
+
+func (c *NodeCache) GPUPodCountUp(nodename string, uuids string) {
+	c.NodeInfoList[nodename].gpuPodCountUp(uuids)
 }
 
 // func (cache *Cache) run() {

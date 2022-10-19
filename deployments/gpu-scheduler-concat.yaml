@@ -59,7 +59,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/gpu-scheduler:v0.215
+          image: ketidevit2/gpu-scheduler:v0.251
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
@@ -89,7 +89,7 @@ metadata:
   name: gpu-scheduler-configmap
   namespace: gpu
 data:
-  node-gpu-score-weight : "0.3 0.7"
+  node-gpu-score-weight : "0.4:0.6"
   pod-re-schedule-permit : "true"
   node-reservation-permit : "false"
   nvlink-weight-percentage : "10"

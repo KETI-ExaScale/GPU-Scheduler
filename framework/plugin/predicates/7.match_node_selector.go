@@ -12,7 +12,7 @@ func (pl MatchNodeSelector) Name() string {
 }
 
 func (pl MatchNodeSelector) Debugg() {
-	fmt.Println("#7. ", pl.Name())
+	fmt.Println("F#7. ", pl.Name())
 }
 
 func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -20,7 +20,6 @@ func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 		return
 	}
 
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			for key, pod_value := range newPod.Pod.Spec.NodeSelector {
@@ -29,14 +28,11 @@ func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 						continue
 					}
 				}
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 				break
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }

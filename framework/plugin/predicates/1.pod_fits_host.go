@@ -12,7 +12,7 @@ func (pl PodFitsHost) Name() string {
 }
 
 func (pl PodFitsHost) Debugg() {
-	fmt.Println("#1. ", pl.Name())
+	fmt.Println("F#1. ", pl.Name())
 }
 
 func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -20,17 +20,13 @@ func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 		return
 	}
 
-	fmt.Print("- nodes: {")
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if newPod.Pod.Spec.NodeName != nodeName {
-				nodeinfo.PluginResult.FilterNode(pl.Name())
+				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
+				newPod.FilterNode(pl.Name())
 			}
 		}
-		if !nodeinfo.PluginResult.IsFiltered {
-			fmt.Print(nodeName, ", ")
-		}
 	}
-	fmt.Println("}")
 }

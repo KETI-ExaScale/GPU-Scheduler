@@ -27,7 +27,7 @@ func (pl GPUTemperature) Name() string {
 }
 
 func (pl GPUTemperature) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("#16.", pl.Name())
+	fmt.Println("S#16.", pl.Name())
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
