@@ -87,20 +87,20 @@ func GPUPodBinpackFramework() GPUSchedulerInterface {
 			priorities.VolumeBinding{},
 			priorities.NodeMetricAnalysis{},
 			priorities.SetGPUFlopsScore{},
-			// priorities.AllocatedPodCountInGPU{},
-			priorities.GPUUtilization{},
+			priorities.AllocatedPodCountInGPU{},
+			// priorities.GPUUtilization{},
 			priorities.GPUMemoryUsage{},
-			priorities.GPUMerticAnalysis{},
+			// priorities.GPUMerticAnalysis{},
 			// priorities.GPUTemperature{},
 			// priorities.GPUPower{},
 			// priorities.GPUBandwidth{},
-			priorities.GPUDirectStoragePriority{},
-			priorities.BalancedGPUProcessType{},
+			// priorities.GPUDirectStoragePriority{},
+			// priorities.BalancedGPUProcessType{},
 		},
 	}
 }
 
-func NonGPUPodFramework() GPUSchedulerInterface { //이걸 쓸일 있을까..?
+func NonGPUPodFramework() GPUSchedulerInterface {
 	return &GPUSchedulerFramework{
 		Filtering: []FilterPlugin{
 			predicates.PodFitsHost{},
