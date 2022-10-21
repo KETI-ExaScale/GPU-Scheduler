@@ -1,6 +1,6 @@
 registry="ketidevit2"
-imagename="gpu-scheduler"
-version="v0.251"
+imagename="keti-gpu-scheduler"
+version="v0.252"
 
 #latest golang
 #export PATH=$PATH:/usr/local/go/bin && \
