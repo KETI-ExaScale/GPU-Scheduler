@@ -276,10 +276,20 @@ func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 
 	if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
 		fmt.Println("- add node {", pod.Spec.NodeName, "} gpu metric collector")
+		ip := pod.Status.PodIP
+		for ip == "" {
+			ip = pod.Status.PodIP
+			continue
+		}
 		sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].MetricCollectorIP = pod.Status.PodIP
 	} else if strings.HasPrefix(pod.Name, "keti-cluster-manager") {
 		if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
 			fmt.Println("- add node {", pod.Spec.NodeName, "} cluster manager")
+			ip := pod.Status.PodIP
+			for ip == "" {
+				ip = pod.Status.PodIP
+				continue
+			}
 			sched.ClusterManagerHost = pod.Status.PodIP
 			sched.InitClusterManager()
 		}
