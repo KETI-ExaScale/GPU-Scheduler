@@ -177,7 +177,7 @@ func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, 
 		fp.Debugg()
 		fp.Filter(nodeInfoCache, newPod)
 		if nodeInfoCache.AvailableNodeCount == 0 {
-			return fmt.Errorf("there isn't any node to schedule")
+			return fmt.Errorf("- there isn't any node to schedule")
 		}
 	}
 	return nil
