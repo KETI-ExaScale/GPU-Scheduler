@@ -26,6 +26,10 @@ import (
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 )
 
+func KETI_LOG(log string) {
+	// if GPUScheduler
+}
+
 // GetPodFullName returns a name that uniquely identifies a pod.
 func GetPodFullName(pod *v1.Pod) string {
 	// Use underscore as the delimiter because it is not allowed in pod name

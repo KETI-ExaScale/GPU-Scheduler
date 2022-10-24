@@ -60,6 +60,8 @@ spec:
       containers:
         - name: gpu-schedule
           image: ketidevit2/keti-gpu-scheduler:v0.253
+          args:
+            - --debugging=on
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
