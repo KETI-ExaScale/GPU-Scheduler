@@ -298,7 +298,8 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 
 	//metric-collector랑 cluster-manager는 ip가 바뀌었는지가 중요
 	if strings.HasPrefix(newPod.Name, "keti-gpu-metric-collector") {
-		fmt.Println("- add node {", newPod.Spec.NodeName, "} gpu metric collector")
+		log := fmt.Sprintf("- add node {%s} gpu metric collector", newPod.Spec.NodeName)
+		r.KETI_LOG(log)
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
 			sched.NodeInfoCache.NodeInfoList[newPod.Spec.NodeName].MetricCollectorIP = newPod.Status.PodIP
 		}

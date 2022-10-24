@@ -18,6 +18,7 @@ package resourceinfo
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -26,8 +27,12 @@ import (
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 )
 
+const GPU_SCHEDUER_DEBUGG_MODE = false
+
 func KETI_LOG(log string) {
-	// if GPUScheduler
+	if GPU_SCHEDUER_DEBUGG_MODE {
+		fmt.Println(log)
+	}
 }
 
 // GetPodFullName returns a name that uniquely identifies a pod.
