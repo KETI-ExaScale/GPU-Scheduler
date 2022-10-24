@@ -273,28 +273,6 @@ func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 	// Assumed Pod or scehduled other scheduler
 	// fmt.Printf("- add pod {%s} to cache\n", pod.Name)
 	sched.NodeInfoCache.AddPod(pod, r.BindingFinished)
-
-	if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
-		fmt.Println("- add node {", pod.Spec.NodeName, "} gpu metric collector")
-		ip := pod.Status.PodIP
-		for ip == "" {
-			ip = pod.Status.PodIP
-			continue
-		}
-		sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].MetricCollectorIP = pod.Status.PodIP
-	} else if strings.HasPrefix(pod.Name, "keti-cluster-manager") {
-		if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
-			fmt.Println("- add node {", pod.Spec.NodeName, "} cluster manager")
-			ip := pod.Status.PodIP
-			for ip == "" {
-				ip = pod.Status.PodIP
-				continue
-			}
-			sched.ClusterManagerHost = pod.Status.PodIP
-			sched.InitClusterManager()
-		}
-	}
-
 }
 
 func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
@@ -318,9 +296,22 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 		}
 	}
 
-	if err := sched.NodeInfoCache.UpdatePod(oldPod, newPod); err != nil {
-		fmt.Printf("<error> cannot update pod %s in cache\n", oldPod.Name)
+	//metric-collector랑 cluster-manager는 update되고 ip를 가졌을때가 유의미(add말고)
+	if strings.HasPrefix(newPod.Name, "keti-gpu-metric-collector") {
+		fmt.Println("- add node {", newPod.Spec.NodeName, "} gpu metric collector")
+		if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
+			sched.NodeInfoCache.NodeInfoList[newPod.Spec.NodeName].MetricCollectorIP = newPod.Status.PodIP
+		}
+	} else if strings.HasPrefix(newPod.Name, "keti-cluster-manager") {
+		if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
+			fmt.Println("- add node {", newPod.Spec.NodeName, "} cluster manager")
+			if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
+				sched.ClusterManagerHost = newPod.Status.PodIP
+				sched.InitClusterManager()
+			}
+		}
 	}
+
 }
 
 func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
