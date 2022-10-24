@@ -296,20 +296,20 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 		}
 	}
 
-	//metric-collector랑 cluster-manager는 update되고 ip를 가졌을때가 유의미(add말고)
+	//metric-collector랑 cluster-manager는 ip가 바뀌었는지가 중요
 	if strings.HasPrefix(newPod.Name, "keti-gpu-metric-collector") {
 		fmt.Println("- add node {", newPod.Spec.NodeName, "} gpu metric collector")
-		if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
+		if oldPod.Status.PodIP != newPod.Status.PodIP {
 			sched.NodeInfoCache.NodeInfoList[newPod.Spec.NodeName].MetricCollectorIP = newPod.Status.PodIP
 		}
 	} else if strings.HasPrefix(newPod.Name, "keti-cluster-manager") {
-		if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
+		// if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
+		if oldPod.Status.PodIP != newPod.Status.PodIP {
 			fmt.Println("- add node {", newPod.Spec.NodeName, "} cluster manager")
-			if oldPod.Status.PodIP == "" && newPod.Status.PodIP != "" {
-				sched.ClusterManagerHost = newPod.Status.PodIP
-				sched.InitClusterManager()
-			}
+			sched.ClusterManagerHost = newPod.Status.PodIP
+			sched.InitClusterManager()
 		}
+		// }
 	}
 
 }

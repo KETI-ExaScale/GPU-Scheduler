@@ -21,7 +21,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v0.252
+          image: ketidevit2/keti-gpu-scheduler:v0.253
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
