@@ -27,7 +27,7 @@ import (
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 )
 
-const GPU_SCHEDUER_DEBUGG_LEVEL = 3
+const GPU_SCHEDUER_DEBUGG_LEVEL = 1
 
 func KETI_LOG_L1(log string) { //자세한 출력, DumpClusterInfo DumpNodeInfo
 	if GPU_SCHEDUER_DEBUGG_LEVEL < 2 { //LEVEL = 1,2,3

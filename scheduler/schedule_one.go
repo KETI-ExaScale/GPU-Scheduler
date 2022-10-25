@@ -340,11 +340,7 @@ func (sched *GPUScheduler) schedulePod() error {
 	//[STEP 2] Filtering Stage
 	err := sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
 	if err != nil {
-		return fmt.Errorf("filtering failed (reason: %s)", err)
-	}
-
-	if sched.NodeInfoCache.AvailableNodeCount == 0 {
-		return fmt.Errorf("there is no node to schedule (unschedulable plugins: %s)", sched.NewPod.UnschedulablePlugins)
+		return fmt.Errorf("filtering failed - %s (unschedulable plugins: %s)", err, sched.NewPod.UnschedulablePlugins)
 	}
 
 	//[STEP 3] Scoring Stage
