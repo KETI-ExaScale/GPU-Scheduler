@@ -30,7 +30,7 @@ import (
 )
 
 func main() {
-	r.KETI_LOG_L1("\n-----:: Start GPU Scheduler ::-----")
+	r.KETI_LOG_L3("\n-----:: Start GPU Scheduler ::-----")
 
 	//reschedulingTest() // 에러파드 재스케줄링 테스트
 
