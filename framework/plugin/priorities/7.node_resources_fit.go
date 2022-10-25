@@ -27,10 +27,10 @@ func (pl NodeResourcesFit) Name() string {
 }
 
 func (pl NodeResourcesFit) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("S#7. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("S#7. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore))
 		}
 	}
 }

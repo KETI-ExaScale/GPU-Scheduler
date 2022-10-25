@@ -16,6 +16,7 @@ package main
 import (
 	"context"
 	"fmt"
+	r "gpu-scheduler/resourceinfo"
 	s "gpu-scheduler/scheduler"
 	"log"
 	"os"
@@ -29,7 +30,7 @@ import (
 )
 
 func main() {
-	log.Println("\n-----:: Start GPU Scheduler ::-----")
+	r.KETI_LOG_L1("\n-----:: Start GPU Scheduler ::-----")
 
 	//reschedulingTest() // 에러파드 재스케줄링 테스트
 
@@ -51,7 +52,7 @@ func main() {
 
 	err = s.Scheduler.InitClusterManager() // Init Cluster Manager
 	if err != nil {
-		fmt.Println("<error> Init Cluster Manager error-", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> Init Cluster Manager error-%s", err))
 	}
 
 	s.AddAllEventHandlers(s.Scheduler, informerFactory) // Scheduler Event Handler (node,pod craete/delete/update | policy update)
@@ -67,7 +68,7 @@ func main() {
 	for {
 		select {
 		case <-signalChan:
-			log.Printf("Shutdown signal received, exiting...")
+			r.KETI_LOG_L3(fmt.Sprint("Shutdown signal received, exiting..."))
 			close(quitChan)
 			cancel()
 			wg.Wait()

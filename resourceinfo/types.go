@@ -191,13 +191,13 @@ func (gs *GPUScore) InitGPUScore(uuid string) {
 }
 
 func (pr *PluginResult) FilterNode(node string, stage string) {
-	fmt.Printf("- node {%s} filtered, stage = %s", node, stage)
+	KETI_LOG_L1(fmt.Sprintf("- node {%s} filtered, stage = %s", node, stage))
 	pr.IsFiltered = true
 	pr.FilteredStage = stage
 }
 
 func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
-	fmt.Printf("- node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage)
+	KETI_LOG_L1(fmt.Sprintf("- node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage))
 	gs.IsFiltered = true
 	gs.FilteredStage = stage
 }
@@ -286,7 +286,7 @@ func NewInitPodInfo() *PodInfo {
 	memoryValue := int64(memoryQuentity.Value())
 	res := &PodResource{cpuMillivalue, memoryValue, 0, 1, 0, 0}
 	// &PodResource{MilliCPU Memory EphemeralStorage GPUCount GPUMemoryLimit GPUMemoryRequest}
-	fmt.Println("<test> res: ", res)
+	KETI_LOG_L1(fmt.Sprintf("<test> res: %+v", res))
 	return &PodInfo{
 		Pod:                        nil,
 		RequiredAffinityTerms:      nil,
@@ -613,13 +613,13 @@ func NewNodeInfo() *NodeInfo {
 }
 
 func (n *NodeInfo) DumpNodeInfo() {
-	fmt.Println("Dump Cache")
+	KETI_LOG_L1("Dump Cache")
 
 	fmt.Println("(1') Node() name {", n.Node().Name, "}")
 
-	fmt.Print("(2) pods: ")
+	KETI_LOG_L1("(2) pods: ")
 	for _, pod := range n.Pods {
-		fmt.Print(pod.Pod.Name, ", ")
+		KETI_LOG_L1(fmt.Sprintf("%s, ", pod.Pod.Name))
 	}
 	fmt.Println()
 
@@ -631,17 +631,17 @@ func (n *NodeInfo) DumpNodeInfo() {
 
 	// fmt.Print("(3) num of image: ", len(n.ImageStates), "\n")
 
-	fmt.Print("(3) gpu name: ")
+	KETI_LOG_L1("(3) gpu uuid: ")
 	for _, uuid := range n.NodeMetric.GPU_UUID {
-		fmt.Print(uuid, ", ")
+		KETI_LOG_L1(fmt.Sprintf("%s, ", uuid))
 	}
-	fmt.Println()
+	KETI_LOG_L1("\n")
 
-	fmt.Print("(4) gpu uuid: ")
-	for uuid, _ := range n.GPUMetrics {
-		fmt.Print(uuid, ", ")
+	KETI_LOG_L1("(4) gpu name: ")
+	for name, _ := range n.GPUMetrics {
+		KETI_LOG_L1(fmt.Sprintf("%s, ", name))
 	}
-	fmt.Println()
+	KETI_LOG_L1("\n")
 
 }
 
@@ -664,7 +664,7 @@ func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Cl
 	} else { // GPU Metric Collector running in node
 		err := n.GetInitMetric(ip) //init node, gpu metric
 		if err != nil {
-			fmt.Println("<error> Get Init Metric {", node.Name, "} error - ", err)
+			KETI_LOG_L3(fmt.Sprintf("<error> Get Init Metric {%s} error - %s", node.Name, err))
 			n.PluginResult.IsFiltered = true
 		}
 		// if isNonGPUNode(node) {

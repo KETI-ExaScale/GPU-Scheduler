@@ -39,7 +39,7 @@ func NewClusterCache() (*ClusterCache, error) {
 	var clusterInfoList = make(map[string]*ClusterInfo)
 	kubeConfigPath, err := findKubeConfig()
 	if err != nil {
-		fmt.Println("<error> findKubeConfig error-", err)
+		KETI_LOG_L3(fmt.Sprintf("<error> findKubeConfig error-%s", err))
 		return &ClusterCache{
 			MyClusterName:   "",
 			MyClusterInfo:   myClusterInfo,
@@ -50,7 +50,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 	files, err := ioutil.ReadDir(kubeConfigPath)
 	if err != nil {
-		fmt.Println("<error> Read Kubeconfig Path error-", err)
+		KETI_LOG_L3(fmt.Sprintf("<error> Read Kubeconfig Path error-%s", err))
 		return &ClusterCache{
 			MyClusterName:   "",
 			MyClusterInfo:   myClusterInfo,
@@ -72,7 +72,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 		kubeConfig, err := clientcmd.LoadFromFile(kubeConfigPath_)
 		if err != nil {
-			fmt.Println("<error> load from file error-", err)
+			KETI_LOG_L3(fmt.Sprintf("<error> load from file error-%s", err))
 			continue
 		}
 
@@ -90,7 +90,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 			config, err := clientcmd.BuildConfigFromFlags(cluster.Server, kubeConfigPath_)
 			if err != nil {
-				fmt.Println("<error> BuildConfigFromFlags error-", err)
+				KETI_LOG_L3(fmt.Sprintf("<error> BuildConfigFromFlags error-%s", err))
 				clusterInfo.Avaliable = false
 				clusterInfoList[name] = clusterInfo
 				filteredCluster = append(filteredCluster, name)
@@ -98,7 +98,7 @@ func NewClusterCache() (*ClusterCache, error) {
 			}
 			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
-				fmt.Println("<error> NewForConfig error-", err)
+				KETI_LOG_L3(fmt.Sprintf("<error> NewForConfig error-%s", err))
 				clusterInfo.Avaliable = false
 				clusterInfo.Config = config
 				clusterInfoList[name] = clusterInfo
@@ -146,15 +146,15 @@ func NewClusterInfo() *ClusterInfo {
 }
 
 func (cc ClusterCache) DumpClusterInfo() {
-	fmt.Println("\n-----:: Dump cluster Info Cache ::-----")
-	fmt.Println("# total joined cluster count: ", len(cc.ClusterInfoList)+1) //joined + mycluster
+	KETI_LOG_L1("\n-----:: Dump cluster Info Cache ::-----")
+	KETI_LOG_L1(fmt.Sprintf("# total joined cluster count: %d", len(cc.ClusterInfoList)+1)) //joined + mycluster
 
 	for cn, ci := range cc.ClusterInfoList {
-		fmt.Println("[clusterName : ", cn, "]")
+		KETI_LOG_L1(fmt.Sprintf("[clusterName : %s]", cn))
 		if ci.Avaliable {
-			fmt.Println("# Cluster IP: ", ci.ClusterIP)
+			KETI_LOG_L1(fmt.Sprintf("# Cluster IP: %s", ci.ClusterIP))
 		} else {
-			fmt.Println("-> Unavailable Cluster")
+			KETI_LOG_L1("-> Unavailable Cluster")
 		}
 	}
 }

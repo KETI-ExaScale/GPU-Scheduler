@@ -43,10 +43,10 @@ func (pl SelectorSpread) Name() string {
 }
 
 func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("S#3. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("S#3. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore))
 		}
 	}
 }

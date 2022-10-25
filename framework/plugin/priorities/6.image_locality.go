@@ -35,10 +35,10 @@ func (pl ImageLocality) Name() string {
 }
 
 func (pl ImageLocality) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("S#6. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("S#6. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore))
 		}
 	}
 }

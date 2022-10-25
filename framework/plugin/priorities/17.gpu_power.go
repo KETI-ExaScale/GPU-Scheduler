@@ -26,12 +26,12 @@ func (pl GPUPower) Name() string {
 }
 
 func (pl GPUPower) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("S#17.", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("S#17. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+					r.KETI_LOG_L1(fmt.Sprintf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore))
 				}
 			}
 		}

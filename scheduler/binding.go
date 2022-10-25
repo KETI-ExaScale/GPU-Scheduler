@@ -36,23 +36,23 @@ func patchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 
 //write GPU_ID to annotation
 func patchPodAnnotation(bestGPU string) error {
-	fmt.Println("- write gpu uuid in pod annotation")
+	r.KETI_LOG_L1("- write gpu uuid in pod annotation")
 
 	patchedAnnotationBytes, err := patchPodAnnotationUUID(bestGPU)
 	if err != nil {
-		return fmt.Errorf("<error> failed to generate annotations - %s", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> failed to generate annotations - %s", err))
 	}
 
 	_, err = Scheduler.NodeInfoCache.HostKubeClient.CoreV1().Pods(Scheduler.NewPod.Pod.Namespace).Patch(context.TODO(), Scheduler.NewPod.Pod.Name, types.StrategicMergePatchType, patchedAnnotationBytes, metav1.PatchOptions{})
 	if err != nil {
-		return fmt.Errorf("<error> failed to patch annotations - %s", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> failed to patch annotations - %s", err))
 	}
 
 	return nil
 }
 
 func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, result r.ScheduleResult) {
-	fmt.Println("[STEP 5] Binding Pod To Target Node {", newpod.Pod.Name, "}")
+	r.KETI_LOG_L3(fmt.Sprintf("[STEP 5] Binding Pod To Target Node {%s}", newpod.Pod.Name))
 
 	_, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -64,13 +64,13 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	ip := sched.ClusterManagerHost
 	if ip != "" {
 		reScore := int(float64(result.TotalScore) * 0.9) //노드 스코어를 줄여야함 -> 구체적으로
-		fmt.Println("<test> score: ", result.TotalScore, ",", reScore)
+		r.KETI_LOG_L1(fmt.Sprintf("<test> score: %d -> %d", result.TotalScore, reScore))
 		success, err := UpdateNodeScore(ip, result.BestNode, reScore)
 		if err != nil {
-			fmt.Println("<error> update node score grpc error - ", err)
+			r.KETI_LOG_L3(fmt.Sprintf("<error> update node score grpc error - %s", err))
 		}
 		if !success {
-			fmt.Println("<error> failed update node score")
+			r.KETI_LOG_L3("<error> failed update node score")
 		}
 	}
 
@@ -79,7 +79,7 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 		err := patchPodAnnotation(result.BestGPU)
 		if err != nil {
 			sched.SchedulingQueue.Add_BackoffQ(&newpod)
-			fmt.Println("<error> failed to generate patched annotations - ", err)
+			r.KETI_LOG_L3(fmt.Sprintf("<error> failed to generate patched annotations - %s", err))
 			return
 		}
 	}
@@ -101,7 +101,7 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 
 	err := sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
-		fmt.Println("<error> binding error - ", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> binding error - %s", err))
 		sched.SchedulingQueue.Add_BackoffQ(&newpod)
 		return
 	}
@@ -110,6 +110,6 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	// message := fmt.Sprintf("<Binding Success> Successfully assigned %s", sched.NewPod.Pod.Name)
 	// event := newpod.MakeBindEvent(message)
 	// fmt.Println("<Binding Success> Successfully assigned", newpod.Pod.Name)
-	fmt.Printf("-----:: Successfully Assigned Pod {%s} ::-----\n", newpod.Pod.Name)
+	r.KETI_LOG_L3(fmt.Sprintf("-----:: Successfully Assigned Pod {%s} ::-----\n", newpod.Pod.Name))
 	// PostEvent(event)
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pb "gpu-scheduler/proto"
+	r "gpu-scheduler/resourceinfo"
 
 	"google.golang.org/grpc"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -20,7 +21,7 @@ type InitStruct struct {
 }
 
 func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
-	fmt.Println("- Init My Cluster Manager Called")
+	r.KETI_LOG_L2("- Init My Cluster Manager Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -32,7 +33,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 
 	var requestMessageList []*pb.RequestMessage
 	for _, info := range infoList {
-		fmt.Println("# Init Info (", info.NodeName, ",", info.Score, ",", info.GPUCount, ")")
+		r.KETI_LOG_L1(fmt.Sprintf("# Init Info (%s,%d,%d)", info.NodeName, info.Score, info.GPUCount))
 		var requestMessage = &pb.RequestMessage{
 			NodeName:  info.NodeName,
 			NodeScore: info.Score,
@@ -58,7 +59,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 }
 
 func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, error) {
-	fmt.Println("- Get Best Cluster Called")
+	r.KETI_LOG_L2("- Get Best Cluster Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -87,11 +88,11 @@ func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, e
 }
 
 func UpdateNodeScore(ip string, node string, score int) (bool, error) {
-	fmt.Println("update node score: ", node, "-", score)
+	r.KETI_LOG_L1(fmt.Sprintf("# update node score: %s - %d", node, score))
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("<error> update node score1 - ", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> update node score1 - %s", err))
 		return false, err
 	}
 	defer conn.Close()
@@ -108,7 +109,7 @@ func UpdateNodeScore(ip string, node string, score int) (bool, error) {
 	p, err := grpcClient.UpdateMyCluster(ctx, updateClusterMessage)
 	if err != nil {
 		cancel()
-		fmt.Println("<error> update node score2 - ", err)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> update node score2 - %s", err))
 		return false, err
 	}
 

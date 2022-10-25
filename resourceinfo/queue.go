@@ -68,16 +68,16 @@ func (q *SchedulingQueue) Add_AvtiveQ(pod *v1.Pod) error {
 }
 
 func (q *SchedulingQueue) PrintactiveQ() {
-	fmt.Println("print active q")
+	KETI_LOG_L1("print active q")
 	for e := q.activeQ.Front(); e != nil; e = e.Next() {
-		fmt.Println("# ", e.Value.(*QueuedPodInfo).Pod.Name)
+		KETI_LOG_L1(fmt.Sprintf("# %s", e.Value.(*QueuedPodInfo).Pod.Name))
 	}
 }
 
 func (q *SchedulingQueue) PrintbackoffQ() {
-	fmt.Println("print backoff q")
+	KETI_LOG_L1("print backoff q")
 	for e := q.podBackoffQ.Front(); e != nil; e = e.Next() {
-		fmt.Println("# ", e.Value.(*QueuedPodInfo).Pod.Name)
+		KETI_LOG_L1(fmt.Sprintf("# %s", e.Value.(*QueuedPodInfo).Pod.Name))
 	}
 }
 
@@ -94,7 +94,7 @@ func (q *SchedulingQueue) Pop_AvtiveQ() (*QueuedPodInfo, error) {
 
 	obj := q.activeQ.Front()
 	if obj == nil {
-		fmt.Println("nil!!!")
+		KETI_LOG_L1("nil!!!")
 	}
 	pInfo := obj.Value.(*QueuedPodInfo)
 	q.activeQ.Remove(obj)
@@ -274,10 +274,10 @@ func (q *SchedulingQueue) Delete(pod *v1.Pod) error {
 	q.PrintbackoffQ()
 
 	if exists, podInfo := q.backoffQLookup(pod.UID); exists {
-		fmt.Println("- delete Backoff Queue pod [", podInfo.PodInfo.Pod.Name, "]")
+		KETI_LOG_L1(fmt.Sprintf("- delete Backoff Queue pod [%s]", podInfo.PodInfo.Pod.Name))
 	}
 	if exists, podInfo := q.activeQLookup(pod.UID); exists {
-		fmt.Println("- delete Active Queue pod [", podInfo.PodInfo.Pod.Name, "]")
+		KETI_LOG_L1(fmt.Sprintf("- delete Active Queue pod [%s]", podInfo.PodInfo.Pod.Name))
 	}
 
 	return nil

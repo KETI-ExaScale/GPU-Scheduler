@@ -172,7 +172,7 @@ type ScorePlugin interface {
 }
 
 func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
-	fmt.Println("[STEP 2] Run Filtering Plugins")
+	r.KETI_LOG_L3("[STEP 2] Run Filtering Plugins")
 	for _, fp := range sf.Filtering {
 		fp.Debugg()
 		fp.Filter(nodeInfoCache, newPod)
@@ -184,7 +184,7 @@ func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, 
 }
 
 func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
-	fmt.Println("[STEP 3] Run Scoring Plugins")
+	r.KETI_LOG_L3("[STEP 3] Run Scoring Plugins")
 	for _, sp := range sf.Scoring {
 		sp.Score(nodeInfoCache, newPod)
 		sp.Debugg(nodeInfoCache)

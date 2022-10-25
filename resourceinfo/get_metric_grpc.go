@@ -49,7 +49,7 @@ func (gm *GPUMetric) GetGPUMetric(uuid string, ip string) error {
 	host := ip + ":" + grpcHost
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("<error> get gpu metric1 - ", err)
+		KETI_LOG_L3(fmt.Sprintf("<error> get gpu metric1 - %s", err))
 		return err
 	}
 	defer conn.Close()
@@ -59,7 +59,7 @@ func (gm *GPUMetric) GetGPUMetric(uuid string, ip string) error {
 	p, err := grpcClient.GetGPU(ctx, &pb.GetGPURequest{GpuUuid: uuid})
 	if err != nil {
 		cancel()
-		fmt.Println("<error> get gpu metric2 - ", err)
+		KETI_LOG_L3(fmt.Sprintf("<error> get gpu metric2 - %s", err))
 		return err
 	}
 	result := p.GetGpuMessage()

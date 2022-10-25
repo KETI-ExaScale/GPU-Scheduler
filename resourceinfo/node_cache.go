@@ -101,11 +101,11 @@ func IsMasterNode(node *corev1.Node) bool {
 
 //metric update, score init
 func (c *NodeCache) DumpCache() error {
-	fmt.Println("\n-----:: Dump Node Info Cache ::-----")
+	KETI_LOG_L1("\n-----:: Dump Node Info Cache ::-----")
 
-	fmt.Println("# total node count(available/total): (", c.AvailableNodeCount, "/", c.TotalNodeCount, ")")
+	KETI_LOG_L1(fmt.Sprintf("# total node count(available/total): (%d/%d)", c.AvailableNodeCount, c.TotalNodeCount))
 	for nodeName, nodeInfo := range c.NodeInfoList {
-		fmt.Println("*[nodeName : ", nodeName, "]")
+		KETI_LOG_L1(fmt.Sprintf("*[nodeName : %s]", nodeName))
 
 		if !nodeInfo.PluginResult.IsFiltered {
 			// fmt.Println("(2) pods: ")
@@ -119,42 +119,43 @@ func (c *NodeCache) DumpCache() error {
 			// }
 			// fmt.Println()
 
-			fmt.Println("# Num Of Images: ", len(nodeInfo.ImageStates))
+			KETI_LOG_L1(fmt.Sprintf("# Num Of Images:%d", len(nodeInfo.ImageStates)))
 
 			// fmt.Println("(4) GPU Names: ")
 			// for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
 			// 	fmt.Println("# ", i, ":", uuid)
 			// }
 
-			fmt.Println("# Total GPU Count: ", nodeInfo.NodeMetric.TotalGPUCount)
+			KETI_LOG_L1(fmt.Sprintf("# Num Of Images:%d", len(nodeInfo.ImageStates)))
+			KETI_LOG_L1(fmt.Sprintf("# Total GPU Count: %d", nodeInfo.NodeMetric.TotalGPUCount))
 
-			fmt.Print("# Used Ports: [")
+			KETI_LOG_L1("# Used Ports: [")
 			for port, _ := range nodeInfo.UsedPorts {
-				fmt.Print(port, ", ")
+				KETI_LOG_L1(fmt.Sprintf("%s,", port))
 			}
-			fmt.Println("]")
+			KETI_LOG_L1("]")
 
-			fmt.Println("# Node Memory(Used/Total): ", nodeInfo.NodeMetric.MemoryUsed, "/", nodeInfo.NodeMetric.MemoryTotal)
-			fmt.Println("# Node CPU(Used/Total): ", nodeInfo.NodeMetric.MilliCPUUsed, "/", nodeInfo.NodeMetric.MilliCPUTotal)
-			fmt.Println("# Node Storage(Used/Total): ", nodeInfo.NodeMetric.StorageUsed, "/", nodeInfo.NodeMetric.StorageTotal)
+			KETI_LOG_L1(fmt.Sprintf("# Node Memory(Used/Total): %d/%d", nodeInfo.NodeMetric.MemoryUsed, nodeInfo.NodeMetric.MemoryTotal))
+			KETI_LOG_L1(fmt.Sprintf("# Node CPU(Used/Total):  %d/%d", nodeInfo.NodeMetric.MilliCPUUsed, nodeInfo.NodeMetric.MilliCPUTotal))
+			KETI_LOG_L1(fmt.Sprintf("# Node Storage(Used/Total):  %d/%d", nodeInfo.NodeMetric.StorageUsed, nodeInfo.NodeMetric.StorageTotal))
 
-			fmt.Println("(metric 1) NVLink List: ")
+			KETI_LOG_L1("(metric 1) NVLink List: ")
 			for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
-				fmt.Println("[", nvlink.GPU1, ":", nvlink.GPU2, ":", nvlink.Lane, "]")
+				KETI_LOG_L1(fmt.Sprintf("[%s:%s:%d]", nvlink.GPU1, nvlink.GPU2, nvlink.Lane))
 			}
 
 			for gpuName, gpu := range nodeInfo.GPUMetrics {
-				fmt.Println("**[gpuName : ", gpuName, "]")
-				fmt.Println("(metric 2) GPU Temperature: ", gpu.GPUTemperature)
-				fmt.Println("(metric 3) GPU Architecture: ", gpu.GPUArch)
-				fmt.Println("(metric 4) GPU Flops: ", gpu.GPUFlops)
-				fmt.Println("(metric 5) GPU Memory(Free/Used/Total): ", gpu.GPUMemoryFree, "/", gpu.GPUMemoryUsed, "/", gpu.GPUMemoryTotal)
-				fmt.Println("(metric 6) GPU Power(Free/Total): ", gpu.GPUPowerUsed, "/", gpu.GPUPowerUsed)
-				fmt.Println("(metric 7) GPU Utilization: ", gpu.GPUUtil)
-				fmt.Println("(metric 8) GPU PodCount: ", gpu.PodCount)
+				KETI_LOG_L1(fmt.Sprintf("**[gpuName : %s]", gpuName))
+				KETI_LOG_L1(fmt.Sprintf("(metric 2) GPU Temperature: %d", gpu.GPUTemperature))
+				KETI_LOG_L1(fmt.Sprintf("(metric 3) GPU Architecture: %d", gpu.GPUArch))
+				KETI_LOG_L1(fmt.Sprintf("(metric 4) GPU Flops: %d", gpu.GPUFlops))
+				KETI_LOG_L1(fmt.Sprintf("(metric 5) GPU Memory(Free/Used/Total): %d/%d/%d", gpu.GPUMemoryFree, gpu.GPUMemoryUsed, gpu.GPUMemoryTotal))
+				KETI_LOG_L1(fmt.Sprintf("(metric 6) GPU Power(Free/Total): %d/%d", gpu.GPUPowerUsed, gpu.GPUPowerUsed))
+				KETI_LOG_L1(fmt.Sprintf("(metric 7) GPU Utilization: %d", gpu.GPUUtil))
+				KETI_LOG_L1(fmt.Sprintf("(metric 8) GPU PodCount: %d", gpu.PodCount))
 			}
 		} else {
-			fmt.Println("-> Filtered Node")
+			KETI_LOG_L1("-> Filtered Node")
 		}
 	}
 

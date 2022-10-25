@@ -44,10 +44,10 @@ func (pl PodTopologySpread) Name() string {
 }
 
 func (pl PodTopologySpread) Debugg(nodeInfoCache *r.NodeCache) {
-	fmt.Println("S#5. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("S#5. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-			fmt.Printf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore)
+			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore))
 		}
 	}
 }
