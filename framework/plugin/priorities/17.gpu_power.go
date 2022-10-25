@@ -31,7 +31,7 @@ func (pl GPUPower) Debugg(nodeInfoCache *r.NodeCache) {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-					r.KETI_LOG_L1(fmt.Sprintf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore))
+					r.KETI_LOG_L1(fmt.Sprintf("-node {%s} gpu {%s} score: %d", nodeName, gpu.UUID, gpu.GPUScore))
 				}
 			}
 		}

@@ -30,7 +30,7 @@ package predicates
 // }
 
 // func (pl InterPodAffinity) Debugg() {
-// 	fmt.Println("F#10.", pl.Name())
+// 	r.KETI_LOG_L2(fmt.Sprintf("F#10. %s", pl.Name()))
 // }
 
 // // PreFilter invoked at the prefilter extension point.

@@ -12,7 +12,7 @@ func (pl PodToleratesNodeTaints) Name() string {
 }
 
 func (pl PodToleratesNodeTaints) Debugg() {
-	fmt.Println("F#8. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#8. %s", pl.Name()))
 }
 
 func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

@@ -15,7 +15,7 @@ func (pl CheckNodeUnschedulable) Name() string {
 }
 
 func (pl CheckNodeUnschedulable) Debugg() {
-	fmt.Println("F#2. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#2. %s", pl.Name()))
 }
 
 func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

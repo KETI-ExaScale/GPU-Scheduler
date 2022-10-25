@@ -14,7 +14,7 @@ func (pl PodFitsHostPorts) Name() string {
 }
 
 func (pl PodFitsHostPorts) Debugg() {
-	fmt.Println("F#3. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#3. %s", pl.Name()))
 }
 
 func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

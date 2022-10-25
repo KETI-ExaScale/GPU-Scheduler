@@ -30,7 +30,7 @@ func (pl PodTopologySpread) Name() string {
 }
 
 func (pl PodTopologySpread) Debugg() {
-	fmt.Println("F#9. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#9. %s", pl.Name()))
 }
 
 type topologySpreadConstraint struct {

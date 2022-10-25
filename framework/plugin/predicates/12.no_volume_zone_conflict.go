@@ -12,7 +12,7 @@ func (pl NoVolumeZoneConflict) Name() string {
 }
 
 func (pl NoVolumeZoneConflict) Debugg() {
-	fmt.Println("F#12.", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#12. %s", pl.Name()))
 }
 
 func (pl NoVolumeZoneConflict) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

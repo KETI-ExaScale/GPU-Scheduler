@@ -12,7 +12,7 @@ func (pl NodeFitsGPUMemory) Name() string {
 }
 
 func (pl NodeFitsGPUMemory) Debugg() {
-	fmt.Println("F#4. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#4. %s", pl.Name()))
 }
 
 func (pl NodeFitsGPUMemory) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

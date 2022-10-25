@@ -382,7 +382,7 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 
 	}
 	r.KETI_LOG_L3(fmt.Sprintf("# Scheduling Result: BestNode {%s}", sched.ScheduleResult.BestNode))
-	r.KETI_LOG_L3(fmt.Sprintf("# Scjeduling Result: BestGPU {%s}", sched.ScheduleResult.BestGPU))
+	r.KETI_LOG_L3(fmt.Sprintf("# Scheduling Result: BestGPU {%s}", sched.ScheduleResult.BestGPU))
 }
 
 func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int) {
@@ -396,8 +396,8 @@ func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int)
 	score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
 		float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
 
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 1) node-gpu-score-weight : nodeWeight=%.1f, gpuWeight=%.1f\n", sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
-	r.KETI_LOG_L3(fmt.Sprintf("# Total Score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d\n", score.NodeScore,
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 1) node-gpu-score-weight : nodeWeight=%.1f, gpuWeight=%.1f", sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("# Total Score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
 		sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore))
 }
 

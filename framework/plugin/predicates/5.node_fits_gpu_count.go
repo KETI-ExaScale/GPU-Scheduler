@@ -12,7 +12,7 @@ func (pl NodeFitsGPUCount) Name() string {
 }
 
 func (pl NodeFitsGPUCount) Debugg() {
-	fmt.Println("F#5. ", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#5. %s", pl.Name()))
 }
 
 func (pl NodeFitsGPUCount) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

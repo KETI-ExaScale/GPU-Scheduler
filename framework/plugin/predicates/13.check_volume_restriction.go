@@ -12,7 +12,7 @@ func (pl CheckVolumeRestriction) Name() string {
 }
 
 func (pl CheckVolumeRestriction) Debugg() {
-	fmt.Println("F#13.", pl.Name())
+	r.KETI_LOG_L2(fmt.Sprintf("F#13. %s", pl.Name()))
 }
 
 func (pl CheckVolumeRestriction) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

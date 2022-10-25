@@ -32,7 +32,7 @@ func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
 	r.KETI_LOG_L2(fmt.Sprintf("S#2. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
-			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d\n", nodeName, nodeInfo.PluginResult.NodeScore))
+			r.KETI_LOG_L1(fmt.Sprintf("-node {%s} score: %d", nodeName, nodeInfo.PluginResult.NodeScore))
 		}
 	}
 }

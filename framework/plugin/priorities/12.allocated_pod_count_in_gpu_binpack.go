@@ -32,7 +32,7 @@ func (pl AllocatedPodCountInGPUBinpack) Debugg(nodeInfoCache *r.NodeCache) {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
 				if !gpu.IsFiltered {
-					fmt.Printf("-node {%s} gpu {%s} score: %d\n", nodeName, gpu.UUID, gpu.GPUScore)
+					fmt.Printf("-node {%s} gpu {%s} score: %d", nodeName, gpu.UUID, gpu.GPUScore)
 				}
 			}
 		}
