@@ -59,7 +59,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v0.255
+          image: ketidevit2/keti-gpu-scheduler:v0.260
           # args:
           #   - --debugging=on
           volumeMounts:
@@ -95,4 +95,4 @@ data:
   pod-re-schedule-permit : "true"
   node-reservation-permit : "false"
   nvlink-weight-percentage : "10"
-  gpu-allocate-prefer : "spread"
+  gpu-allocate-prefer : "binpack"

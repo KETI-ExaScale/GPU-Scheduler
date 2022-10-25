@@ -52,7 +52,7 @@ func patchPodAnnotation(bestGPU string) error {
 }
 
 func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, result r.ScheduleResult) {
-	r.KETI_LOG_L3(fmt.Sprintf("[STEP 5] Binding Pod To Target Node {%s}", newpod.Pod.Name))
+	r.KETI_LOG_L3("[STEP 5] Binding Pod To Target Node")
 
 	_, cancel := context.WithCancel(ctx)
 	defer cancel()

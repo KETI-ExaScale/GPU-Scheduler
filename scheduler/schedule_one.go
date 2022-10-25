@@ -41,7 +41,7 @@ const (
 
 //metric update, score init
 func (sched *GPUScheduler) UpdateCache() {
-	r.KETI_LOG_L3("[STEP 1] Update Scheduler Resource Info")
+	r.KETI_LOG_L3("[STEP 1] Get Multi Metrics From KETI-GPU-Metric-Collector")
 	r.KETI_LOG_L2("- Sending gRPC Request To Metric Collector ...")
 
 	sched.ScheduleResult.InitResult()
@@ -338,12 +338,21 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 
 func (sched *GPUScheduler) schedulePod() error {
 	//[STEP 2] Filtering Stage
+	r.KETI_LOG_L3("[STEP 2] Run Filtering Plugins")
 	err := sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
 	if err != nil {
 		return fmt.Errorf("filtering failed - %s (unschedulable plugins: %s)", err, sched.NewPod.UnschedulablePlugins)
 	}
 
 	//[STEP 3] Scoring Stage
+	r.KETI_LOG_L3("[STEP 3] Run Scoring Plugins")
+	if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
+		r.KETI_LOG_L3(fmt.Sprintf("(policy 2) gpu-allocate-prefer : %s", sched.SchedulingPolicy.GPUAllocatePrefer))
+		r.KETI_LOG_L3("- Run GPUPodSpreadFramework...")
+	} else {
+		r.KETI_LOG_L3(fmt.Sprintf("(policy 2) gpu-allocate-prefer : %s", sched.SchedulingPolicy.GPUAllocatePrefer))
+		r.KETI_LOG_L3("- Run GPUPodBinpackFramework...")
+	}
 	err = sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
 	if err != nil {
 		return fmt.Errorf("scoring failed (reason: %s)", err)
@@ -515,7 +524,7 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 
 func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 	r.KETI_LOG_L2("S#20. Check NVLink GPU")
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 2) nvlink-weight-percentage : %d %%\n", sched.SchedulingPolicy.NVLinkWeightPercentage))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 3) nvlink-weight-percentage : %d %%\n", sched.SchedulingPolicy.NVLinkWeightPercentage))
 	for _, nvl := range nodeinfo.NodeMetric.NVLinkList {
 		if nodeinfo.PluginResult.GPUScores[nvl.GPU1].IsFiltered ||
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].IsFiltered {
