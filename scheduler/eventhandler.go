@@ -299,13 +299,13 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 	//metric-collector랑 cluster-manager는 ip가 바뀌었는지가 중요
 	if strings.HasPrefix(newPod.Name, "keti-gpu-metric-collector") {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("- add node {%s} gpu metric collector", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("# add node {%s} gpu metric collector", newPod.Spec.NodeName))
 			sched.NodeInfoCache.NodeInfoList[newPod.Spec.NodeName].MetricCollectorIP = newPod.Status.PodIP
 		}
 	} else if strings.HasPrefix(newPod.Name, "keti-cluster-manager") {
 		// if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("- add node {%s cluster manager", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("# add node {%s cluster manager", newPod.Spec.NodeName))
 			sched.ClusterManagerHost = newPod.Status.PodIP
 			sched.InitClusterManager()
 		}
@@ -337,11 +337,11 @@ func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
 	}
 
 	if strings.HasPrefix(pod.Name, "keti-gpu-metric-collector") {
-		r.KETI_LOG_L2(fmt.Sprintf("- remove gpu metric collector in node {%s}", pod.Spec.NodeName))
+		r.KETI_LOG_L2(fmt.Sprintf("# remove gpu metric collector in node {%s}", pod.Spec.NodeName))
 		sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].MetricCollectorIP = ""
 	}
 
-	r.KETI_LOG_L1(fmt.Sprintf("- delete pod {%s} from cache\n", pod.Name))
+	r.KETI_LOG_L1(fmt.Sprintf("# delete pod {%s} from cache\n", pod.Name))
 	if err := sched.NodeInfoCache.RemovePod(pod); err != nil {
 		klog.ErrorS(err, "<error> Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
 	}
@@ -365,25 +365,26 @@ func (sched *GPUScheduler) addPolicyToCache(obj interface{}) {
 	sched.SchedulingPolicy.ReSchedulePermit = reschedulePermit
 	sched.SchedulingPolicy.NodeReservationPermit = nodeReservetionPermit
 	sched.SchedulingPolicy.NVLinkWeightPercentage = nvlinkWeightPercentage
+	sched.SchedulingPolicy.GPUAllocatePrefer = gpuAllocatePrefer
 
 	r.KETI_LOG_L3("\n-----:: GPU Scheduler Policy List ::-----")
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 1] %s", r.Policy1))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Node Weight : %.1f", nodeWeight))
-	r.KETI_LOG_L3(fmt.Sprintf("  # GPU Weight : %.1f", gpuWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Node Weight : %.1f", nodeWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("  - GPU Weight : %.1f", gpuWeight))
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 2] %s", r.Policy5))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Prefer(spread/binpack) : %s", gpuAllocatePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Prefer(spread/binpack) : %s", gpuAllocatePrefer))
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 3] %s", r.Policy4))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Percentage : %d", nvlinkWeightPercentage))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Percentage : %d", nvlinkWeightPercentage))
 	// r.KETI_LOG_L3(fmt.Sprintf("(policy 4)", r.Policy2))
-	// r.KETI_LOG_L3(fmt.Sprintf("  -value : ", reschedulePermit))
+	// r.KETI_LOG_L3(fmt.Sprintf("  - value : ", reschedulePermit))
 	// r.KETI_LOG_L3(fmt.Sprintf("(policy 5)", r.Policy3))
-	// r.KETI_LOG_L3(fmt.Sprintf("  -value : ", nodeReservetionPermit))
+	// r.KETI_LOG_L3(fmt.Sprintf("  - value : ", nodeReservetionPermit))
 }
 
 func (sched *GPUScheduler) updatePolicyInCache(oldObj, newObj interface{}) {
 	configMap := newObj.(*v1.ConfigMap)
 
-	r.KETI_LOG_L3("- Update GPU Scheduler Policy")
+	r.KETI_LOG_L3("# Update GPU Scheduler Policy")
 
 	w := strings.Split(configMap.Data["node-gpu-score-weight"], ":")
 	nodeWeight, _ := strconv.ParseFloat(w[0], 64)
@@ -398,19 +399,20 @@ func (sched *GPUScheduler) updatePolicyInCache(oldObj, newObj interface{}) {
 	sched.SchedulingPolicy.ReSchedulePermit = reschedulePermit
 	sched.SchedulingPolicy.NodeReservationPermit = nodeReservetionPermit
 	sched.SchedulingPolicy.NVLinkWeightPercentage = nvlinkWeightPercentage
+	sched.SchedulingPolicy.GPUAllocatePrefer = gpuAllocatePrefer
 
 	r.KETI_LOG_L3("\n-----:: GPU Scheduler Policy Updated List ::-----")
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 1] %s", r.Policy1))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Node Weight : %.1f", nodeWeight))
-	r.KETI_LOG_L3(fmt.Sprintf("  # GPU Weight : %.1f", gpuWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Node Weight : %.1f", nodeWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("  - GPU Weight : %.1f", gpuWeight))
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 2] %s", r.Policy5))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Prefer(spread/binpack) : %s", gpuAllocatePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Prefer(spread/binpack) : %s", gpuAllocatePrefer))
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 3] %s", r.Policy4))
-	r.KETI_LOG_L3(fmt.Sprintf("  # Percentage : %d", nvlinkWeightPercentage))
+	r.KETI_LOG_L3(fmt.Sprintf("  - Percentage : %d", nvlinkWeightPercentage))
 	// fmt.Println("(policy 4)", r.Policy2)
-	// fmt.Println("  -value : ", reschedulePermit)
+	// fmt.Println("  - value : ", reschedulePermit)
 	// fmt.Println("(policy 5)", r.Policy3)
-	// fmt.Println("  -value : ", nodeReservetionPermit)
+	// fmt.Println("  - value : ", nodeReservetionPermit)
 }
 
 // assignedPod selects pods that are assigned (scheduled and running).

@@ -46,8 +46,7 @@ func (q *SchedulingQueue) Close() {
 	q.cond.Broadcast()
 }
 
-// Add adds a pod to the active queue. It should be called only when a new pod
-// is added so there is no chance the pod is already in active/unschedulable/backoff queues
+//새 파드 스케줄링 큐로 넣음
 func (q *SchedulingQueue) Add_AvtiveQ(pod *v1.Pod) error {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -68,14 +67,14 @@ func (q *SchedulingQueue) Add_AvtiveQ(pod *v1.Pod) error {
 }
 
 func (q *SchedulingQueue) PrintactiveQ() {
-	KETI_LOG_L1("print active q")
+	KETI_LOG_L1("-print active q")
 	for e := q.activeQ.Front(); e != nil; e = e.Next() {
 		KETI_LOG_L1(fmt.Sprintf("# %s", e.Value.(*QueuedPodInfo).Pod.Name))
 	}
 }
 
 func (q *SchedulingQueue) PrintbackoffQ() {
-	KETI_LOG_L1("print backoff q")
+	KETI_LOG_L1("-print backoff q")
 	for e := q.podBackoffQ.Front(); e != nil; e = e.Next() {
 		KETI_LOG_L1(fmt.Sprintf("# %s", e.Value.(*QueuedPodInfo).Pod.Name))
 	}
@@ -92,9 +91,29 @@ func (q *SchedulingQueue) Pop_AvtiveQ() (*QueuedPodInfo, error) {
 		q.cond.Wait()
 	}
 
+	//스케줄링 큐에 파드가 여러개일때 우선순위 스케줄링을 위한 정렬 수행
+	if q.activeQ.Len() != 1 {
+		//calculate pod priority score
+		for obj := q.activeQ.Front(); obj != nil; obj = obj.Next() {
+			qPod := obj.Value.(*QueuedPodInfo)
+			score := 0
+			if qPod.UserPriority == "L" {
+				score = 10
+			} else if qPod.UserPriority == "M" {
+				score = 50
+			} else if qPod.UserPriority == "H" {
+				score = 100
+			} else {
+				score = 1500
+			}
+			qPod.PriorityScore = qPod.Attempts*10 + score
+		}
+
+	}
+
 	obj := q.activeQ.Front()
 	if obj == nil {
-		KETI_LOG_L1("nil!!!")
+		KETI_LOG_L3("<error> scheduling queue is empty")
 	}
 	pInfo := obj.Value.(*QueuedPodInfo)
 	q.activeQ.Remove(obj)
@@ -114,47 +133,6 @@ func (q *SchedulingQueue) Add_BackoffQ(queuePodInfo *QueuedPodInfo) error {
 	return nil
 }
 
-// func (q *SchedulingQueue) Pop_BackoffQ() (*QueuedPodInfo, error) {
-// 	q.lock.Lock()
-// 	defer q.lock.Unlock()
-
-// 	for q.Empty() {
-// 		if q.closed {
-// 			return nil, fmt.Errorf("queueClosed")
-// 		}
-// 		q.cond.Wait()
-// 	}
-
-// 	obj := q.podBackoffQ.Front()
-// 	pInfo := obj.Value.(*QueuedPodInfo)
-// 	q.podBackoffQ.Remove(obj)
-
-// 	// if pInfo == nil {
-// 	// 	return q.Wait_and_pop()
-// 	// }
-
-// 	return pInfo, nil
-// }
-
-// func (q *SchedulingQueue) Activate() error {
-// 	q.lock.Lock()
-// 	defer q.lock.Unlock()
-
-// 	for pInfo := q.podBackoffQ.Front(); pInfo != nil; pInfo = pInfo.Next() {
-// 		queuedPodInfo := pInfo.Value.(*QueuedPodInfo)
-// 		queuedPodInfo.Timestamp = time.Now()
-// 		queuedPodInfo.activate = true
-// 		queuedPodInfo.Attempts++
-
-// 		q.activeQ.PushBack(pInfo)
-// 		q.podBackoffQ.Remove(pInfo)
-// 	}
-
-// 	q.cond.Broadcast()
-
-// 	return nil
-// }
-
 func (q *SchedulingQueue) Len() int {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -167,7 +145,6 @@ func (q *SchedulingQueue) Empty() bool {
 }
 
 func (q *SchedulingQueue) FlushBackoffQCompleted() {
-	// fmt.Println("flushbackoffq")
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -185,23 +162,9 @@ func (q *SchedulingQueue) FlushBackoffQCompleted() {
 	}
 
 	if was_empty && was_not_empty {
-		// fmt.Println("broadcast2")
 		q.cond.Broadcast()
 	}
 }
-
-// func isPodUpdated(oldPod, newPod *v1.Pod) bool {
-// 	strip := func(pod *v1.Pod) *v1.Pod {
-// 		p := pod.DeepCopy()
-// 		p.ResourceVersion = ""
-// 		p.Generation = 0
-// 		p.Status = v1.PodStatus{}
-// 		p.ManagedFields = nil
-// 		p.Finalizers = nil
-// 		return p
-// 	}
-// 	return !reflect.DeepEqual(strip(oldPod), strip(newPod))
-// }
 
 func (q *SchedulingQueue) backoffQLookup(uid types.UID) (bool, *QueuedPodInfo) {
 	for pInfo := q.podBackoffQ.Front(); pInfo != nil; pInfo = pInfo.Next() {
@@ -231,8 +194,8 @@ func updatePod(oldPodInfo *QueuedPodInfo, newPod *v1.Pod) *QueuedPodInfo {
 	return oldPodInfo
 }
 
+//스케줄링 큐 안의 파드 정보 업데이트
 func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
-	// fmt.Println("updatepod in scheduling queue: ", oldPod.Name)
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
@@ -250,25 +213,20 @@ func (q *SchedulingQueue) Update(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
-	// If pod is not in any of the queues, we put it in the active queue.
 	pInfo := NewQueuedPodInfo(newPod)
 	q.activeQ.PushBack(pInfo)
 
 	if was_empty {
-		// fmt.Println("broadcast3")
 		q.cond.Broadcast()
 	}
 
 	return nil
 }
 
-// Delete deletes the item from either of the two queues. It assumes the pod is
-// only in one queue.
+//스케줄링 큐 안의 파드 삭제
 func (q *SchedulingQueue) Delete(pod *v1.Pod) error {
-	// fmt.Println("- delete pod from scheduing queue")
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	// q.PodNominator.DeleteNominatedPodIfExists(pod)
 
 	q.PrintactiveQ()
 	q.PrintbackoffQ()

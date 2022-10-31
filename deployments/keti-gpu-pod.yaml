@@ -8,6 +8,7 @@ spec:
     # metadata:
     #   annotations:
     #     clusterName: keti-gpu-cluster2
+    #     priority: H
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler

@@ -191,13 +191,13 @@ func (gs *GPUScore) InitGPUScore(uuid string) {
 }
 
 func (pr *PluginResult) FilterNode(node string, stage string) {
-	KETI_LOG_L1(fmt.Sprintf("- node {%s} filtered, stage = %s", node, stage))
+	KETI_LOG_L1(fmt.Sprintf("# node {%s} filtered, stage = %s", node, stage))
 	pr.IsFiltered = true
 	pr.FilteredStage = stage
 }
 
 func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
-	KETI_LOG_L1(fmt.Sprintf("- node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage))
+	KETI_LOG_L1(fmt.Sprintf("# node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage))
 	gs.IsFiltered = true
 	gs.FilteredStage = stage
 }
@@ -212,7 +212,17 @@ type QueuedPodInfo struct {
 	activate                bool
 	TargetCluster           string
 	FilteredCluster         []string
+	PriorityScore           int    //우선순위큐 스코어
+	UserPriority            string //사용자 설정 우선순위
 }
+
+/*
+	[UserPriority]
+	- L : Low / 10
+	- M : Middle / 50
+	- H : High / 100
+	- I : Immediatly / 1500
+*/
 
 func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 	if pod == nil { //Cluster Manager Init Pod
@@ -226,19 +236,30 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 			activate:                true,
 			TargetCluster:           "",
 			FilteredCluster:         nil,
+			PriorityScore:           0,
+			UserPriority:            "M",
 		}
+	}
+
+	priority := ""
+	if pod.Annotations["priority"] == "" {
+		priority = "M"
 	} else {
-		return &QueuedPodInfo{ // Schedule Pod
-			PodUID:                  pod.UID,
-			PodInfo:                 GetNewPodInfo(pod),
-			Timestamp:               time.Now(),
-			Attempts:                0,
-			InitialAttemptTimestamp: time.Now(),
-			UnschedulablePlugins:    nil,
-			activate:                true,
-			TargetCluster:           "",
-			FilteredCluster:         nil,
-		}
+		priority = pod.Annotations["priority"]
+	}
+
+	return &QueuedPodInfo{ // Schedule Pod
+		PodUID:                  pod.UID,
+		PodInfo:                 GetNewPodInfo(pod),
+		Timestamp:               time.Now(),
+		Attempts:                0,
+		InitialAttemptTimestamp: time.Now(),
+		UnschedulablePlugins:    nil,
+		activate:                true,
+		TargetCluster:           "",
+		FilteredCluster:         nil,
+		PriorityScore:           0,
+		UserPriority:            priority,
 	}
 }
 
@@ -610,39 +631,6 @@ func NewNodeInfo() *NodeInfo {
 		// TotalGPUCount:                0,
 		// NonZeroRequested:             &Resource{},
 	}
-}
-
-func (n *NodeInfo) DumpNodeInfo() {
-	KETI_LOG_L1("Dump Cache")
-
-	fmt.Println("(1') Node() name {", n.Node().Name, "}")
-
-	KETI_LOG_L1("(2) pods: ")
-	for _, pod := range n.Pods {
-		KETI_LOG_L1(fmt.Sprintf("%s, ", pod.Pod.Name))
-	}
-	fmt.Println()
-
-	// fmt.Print("(3) image: ")
-	// for imageName, _ := range nodeInfo.ImageStates {
-	// 	fmt.Print(imageName, ", ")
-	// }
-	// fmt.Println()
-
-	// fmt.Print("(3) num of image: ", len(n.ImageStates), "\n")
-
-	KETI_LOG_L1("(3) gpu uuid: ")
-	for _, uuid := range n.NodeMetric.GPU_UUID {
-		KETI_LOG_L1(fmt.Sprintf("%s, ", uuid))
-	}
-	KETI_LOG_L1("\n")
-
-	KETI_LOG_L1("(4) gpu name: ")
-	for name, _ := range n.GPUMetrics {
-		KETI_LOG_L1(fmt.Sprintf("%s, ", name))
-	}
-	KETI_LOG_L1("\n")
-
 }
 
 // SetNode sets the overall node information.

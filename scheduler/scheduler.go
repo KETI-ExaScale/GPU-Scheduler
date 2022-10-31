@@ -50,7 +50,7 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 	} else {
 		cmhost = findClusterManagerHost(hostKubeClient)
 		if cmhost == "" {
-			r.KETI_LOG_L2("- cannot find cluster-manager in cluster / scheduling is only available to my cluster")
+			r.KETI_LOG_L2("# cannot find cluster-manager in cluster / scheduling is only available to my cluster")
 			//내 클러스터에만 배포 가능
 		}
 	}

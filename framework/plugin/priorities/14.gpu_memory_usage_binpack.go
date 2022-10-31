@@ -47,8 +47,8 @@ func (pl GPUMemoryUsageBinpack) Score(nodeInfoCache *r.NodeCache, newPod *r.Queu
 		if !nodeinfo.PluginResult.IsFiltered {
 			for j, gpu := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore := float64(gpu.GPUMemoryUsed) / float64(gpu.GPUMemoryTotal)
-					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+					gpuScore := float64(r.MaxScore) * float64(gpu.GPUMemoryUsed) / float64(gpu.GPUMemoryTotal)
+					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) + gpuScore
 					// gpuScore = float64(gpu.GPUMemoryUsed) / float64(nodeInfoCache.GPUMemoryMostInCluster)
 					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
 				}

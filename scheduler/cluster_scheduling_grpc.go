@@ -21,7 +21,7 @@ type InitStruct struct {
 }
 
 func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
-	r.KETI_LOG_L2("- Init My Cluster Manager Called")
+	r.KETI_LOG_L2("# Init My Cluster Manager Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -33,7 +33,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 
 	var requestMessageList []*pb.RequestMessage
 	for _, info := range infoList {
-		r.KETI_LOG_L1(fmt.Sprintf("# Init Info (%s,%d,%d)", info.NodeName, info.Score, info.GPUCount))
+		r.KETI_LOG_L1(fmt.Sprintf("- Init Info (%s,%d,%d)", info.NodeName, info.Score, info.GPUCount))
 		var requestMessage = &pb.RequestMessage{
 			NodeName:  info.NodeName,
 			NodeScore: info.Score,
@@ -59,7 +59,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 }
 
 func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, error) {
-	r.KETI_LOG_L2("- Get Best Cluster Called")
+	r.KETI_LOG_L2("# Get Best Cluster Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {

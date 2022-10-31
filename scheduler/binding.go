@@ -36,7 +36,7 @@ func patchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 
 //write GPU_ID to annotation
 func patchPodAnnotation(bestGPU string) error {
-	r.KETI_LOG_L1("- write gpu uuid in pod annotation")
+	r.KETI_LOG_L1("# write gpu uuid in pod annotation")
 
 	patchedAnnotationBytes, err := patchPodAnnotationUUID(bestGPU)
 	if err != nil {

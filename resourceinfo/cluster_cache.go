@@ -147,14 +147,14 @@ func NewClusterInfo() *ClusterInfo {
 
 func (cc ClusterCache) DumpClusterInfo() {
 	KETI_LOG_L1("\n-----:: Dump cluster Info Cache ::-----")
-	KETI_LOG_L1(fmt.Sprintf("# total joined cluster count: %d", len(cc.ClusterInfoList)+1)) //joined + mycluster
+	KETI_LOG_L1(fmt.Sprintf("-total joined cluster count: %d", len(cc.ClusterInfoList)+1)) //joined + mycluster
 
 	for cn, ci := range cc.ClusterInfoList {
 		KETI_LOG_L1(fmt.Sprintf("[clusterName : %s]", cn))
 		if ci.Avaliable {
-			KETI_LOG_L1(fmt.Sprintf("# Cluster IP: %s", ci.ClusterIP))
+			KETI_LOG_L1(fmt.Sprintf("-cluster ip: %s", ci.ClusterIP))
 		} else {
-			KETI_LOG_L1("-> Unavailable Cluster")
+			KETI_LOG_L1(">unavailable cluster")
 		}
 	}
 }
