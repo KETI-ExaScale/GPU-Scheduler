@@ -78,7 +78,7 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	if newpod.IsGPUPod {
 		err := patchPodAnnotation(result.BestGPU)
 		if err != nil {
-			sched.SchedulingQueue.Add_BackoffQ(&newpod)
+			sched.SchedulingQueue.AddBackoffQ(&newpod)
 			r.KETI_LOG_L3(fmt.Sprintf("<error> failed to generate patched annotations - %s", err))
 			return
 		}
@@ -102,7 +102,7 @@ func (sched *GPUScheduler) Binding(ctx context.Context, newpod r.QueuedPodInfo, 
 	err := sched.NodeInfoCache.HostKubeClient.CoreV1().Pods(newpod.Pod.Namespace).Bind(context.TODO(), binding, metav1.CreateOptions{})
 	if err != nil {
 		r.KETI_LOG_L3(fmt.Sprintf("<error> binding error - %s", err))
-		sched.SchedulingQueue.Add_BackoffQ(&newpod)
+		sched.SchedulingQueue.AddBackoffQ(&newpod)
 		return
 	}
 

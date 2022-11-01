@@ -166,10 +166,6 @@ func (h *Heap) Len() int {
 }
 
 func New(keyFn KeyFunc, lessFn lessFunc) *Heap {
-	return NewWithRecorder(keyFn, lessFn)
-}
-
-func NewWithRecorder(keyFn KeyFunc, lessFn lessFunc) *Heap {
 	return &Heap{
 		data: &data{
 			items:    map[string]*heapItem{},

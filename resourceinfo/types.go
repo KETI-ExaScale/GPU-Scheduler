@@ -68,6 +68,14 @@ const (
 	Update = UpdateNodeAllocatable | UpdateNodeLabel | UpdateNodeTaint | UpdateNodeCondition
 )
 
+const (
+	//--[UserPriority]--
+	LowPriority    = 10
+	MiddlePriority = 50
+	HighPriority   = 100
+	Immediatly     = 1500
+)
+
 // GVK is short for group/version/kind, which can uniquely represent a particular API resource.
 type GVK string
 
@@ -203,26 +211,17 @@ func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
 }
 
 type QueuedPodInfo struct {
-	PodUID types.UID
 	*PodInfo
-	Timestamp               time.Time //큐에 들어온 시간
-	Attempts                int       //스케줄링 시도 횟수
-	InitialAttemptTimestamp time.Time //큐에 최초로 들어온 시간
-	UnschedulablePlugins    []string  //실패한 단계의 이름
-	activate                bool
+	PodUID                  types.UID
+	Timestamp               time.Time   //해당 큐에 들어온 시간
+	Attempts                int         //스케줄링 시도 횟수
+	InitialAttemptTimestamp time.Time   //생성후 큐에 최초로 들어온 시간
+	UnschedulablePlugins    sets.String //실패한 단계의 이름
 	TargetCluster           string
 	FilteredCluster         []string
-	PriorityScore           int    //우선순위큐 스코어
-	UserPriority            string //사용자 설정 우선순위
+	PriorityScore           int //우선순위큐 스코어
+	UserPriority            int //사용자 설정 우선순위
 }
-
-/*
-	[UserPriority]
-	- L : Low / 10
-	- M : Middle / 50
-	- H : High / 100
-	- I : Immediatly / 1500
-*/
 
 func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 	if pod == nil { //Cluster Manager Init Pod
@@ -232,21 +231,15 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 			Timestamp:               time.Now(),
 			Attempts:                0,
 			InitialAttemptTimestamp: time.Now(),
-			UnschedulablePlugins:    nil,
-			activate:                true,
+			UnschedulablePlugins:    sets.NewString(),
 			TargetCluster:           "",
 			FilteredCluster:         nil,
 			PriorityScore:           0,
-			UserPriority:            "M",
+			UserPriority:            MiddlePriority,
 		}
 	}
 
-	priority := ""
-	if pod.Annotations["priority"] == "" {
-		priority = "M"
-	} else {
-		priority = pod.Annotations["priority"]
-	}
+	priority := regularPriority(pod.Annotations["priority"])
 
 	return &QueuedPodInfo{ // Schedule Pod
 		PodUID:                  pod.UID,
@@ -254,12 +247,24 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 		Timestamp:               time.Now(),
 		Attempts:                0,
 		InitialAttemptTimestamp: time.Now(),
-		UnschedulablePlugins:    nil,
-		activate:                true,
+		UnschedulablePlugins:    sets.NewString(),
 		TargetCluster:           "",
 		FilteredCluster:         nil,
-		PriorityScore:           0,
+		PriorityScore:           priority,
 		UserPriority:            priority,
+	}
+}
+
+func regularPriority(p string) int {
+	p = strings.ToUpper(p)
+	if p == "L" || p == "LOW" {
+		return LowPriority
+	} else if p == "H" || p == "HIGH" {
+		return HighPriority
+	} else if p == "I" || p == "Immediatly" {
+		return Immediatly
+	} else { //middle
+		return MiddlePriority
 	}
 }
 
@@ -271,20 +276,19 @@ func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
 		Attempts:                qpi.Attempts,
 		InitialAttemptTimestamp: qpi.InitialAttemptTimestamp,
 		UnschedulablePlugins:    qpi.UnschedulablePlugins,
-		activate:                qpi.activate,
 		TargetCluster:           qpi.TargetCluster,
 	}
 }
 
 func (qpi *QueuedPodInfo) FilterNode(stage string) {
-	qpi.UnschedulablePlugins = append(qpi.UnschedulablePlugins, stage)
+	qpi.UnschedulablePlugins.Insert(stage)
 }
 
-func (qpi *QueuedPodInfo) Activate() {
-	qpi.UnschedulablePlugins = nil
-	qpi.Timestamp = time.Now()
-	qpi.Attempts++
-}
+// func (qpi *QueuedPodInfo) Activate() {
+// 	qpi.UnschedulablePlugins = nil
+// 	qpi.Timestamp = time.Now()
+// 	qpi.Attempts++
+// }
 
 type PodInfo struct {
 	Pod                        *corev1.Pod
@@ -831,105 +835,6 @@ type PodResource struct {
 	GPUMemoryRequest int64
 }
 
-// // Clone returns a copy of this resource.
-// func (r *Resource) Clone() *Resource {
-// 	res := &Resource{
-// 		MilliCPU:         r.MilliCPU,
-// 		Memory:           r.Memory,
-// 		AllowedPodNumber: r.AllowedPodNumber,
-// 		EphemeralStorage: r.EphemeralStorage,
-// 	}
-// 	if r.ScalarResources != nil {
-// 		res.ScalarResources = make(map[v1.ResourceName]int64)
-// 		for k, v := range r.ScalarResources {
-// 			res.ScalarResources[k] = v
-// 		}
-// 	}
-// 	return res
-// }
-
-// // AddScalar adds a resource by a scalar value of this resource.
-// func (r *Resource) AddScalar(name v1.ResourceName, quantity int64) {
-// 	r.SetScalar(name, r.ScalarResources[name]+quantity)
-// }
-
-// // SetScalar sets a resource by a scalar value of this resource.
-// func (r *Resource) SetScalar(name v1.ResourceName, quantity int64) {
-// 	// Lazily allocate scalar resource map.
-// 	if r.ScalarResources == nil {
-// 		r.ScalarResources = map[v1.ResourceName]int64{}
-// 	}
-// 	r.ScalarResources[name] = quantity
-// }
-
-// // // SetMaxResource compares with ResourceList and takes max value for each Resource.
-// // func (r *Resource) SetMaxResource(rl v1.ResourceList) {
-// // 	if r == nil {
-// // 		return
-// // 	}
-
-// // 	for rName, rQuantity := range rl {
-// // 		switch rName {
-// // 		case v1.ResourceMemory:
-// // 			r.Memory = max(r.Memory, rQuantity.Value())
-// // 		case v1.ResourceCPU:
-// // 			r.MilliCPU = max(r.MilliCPU, rQuantity.MilliValue())
-// // 		case v1.ResourceEphemeralStorage:
-// // 			if utilfeature.DefaultFeatureGate.Enabled(features.LocalStorageCapacityIsolation) {
-// // 				r.EphemeralStorage = max(r.EphemeralStorage, rQuantity.Value())
-// // 			}
-// // 		default:
-// // 			if schedutil.IsScalarResourceName(rName) {
-// // 				r.SetScalar(rName, max(r.ScalarResources[rName], rQuantity.Value()))
-// // 			}
-// // 		}
-// // 	}
-// // }
-
-// // // Clone returns a copy of this node.
-// // func (n *NodeInfo) Clone() *NodeInfo {
-// // 	clone := &NodeInfo{
-// // 		node:      n.node,
-// // 		Requested: n.Requested.Clone(),
-// // 		// NonZeroRequested: n.NonZeroRequested.Clone(),
-// // 		Allocatable:  n.Allocatable.Clone(),
-// // 		UsedPorts:    make(HostPortInfo),
-// // 		ImageStates:  n.ImageStates,
-// // 		PVCRefCounts: n.PVCRefCounts,
-// // 		Generation:   n.Generation,
-// // 	}
-// // 	if len(n.Pods) > 0 {
-// // 		clone.Pods = append([]*PodInfo(nil), n.Pods...)
-// // 	}
-// // 	if len(n.UsedPorts) > 0 {
-// // 		// HostPortInfo is a map-in-map struct
-// // 		// make sure it's deep copied
-// // 		for ip, portMap := range n.UsedPorts {
-// // 			clone.UsedPorts[ip] = make(map[ProtocolPort]struct{})
-// // 			for protocolPort, v := range portMap {
-// // 				clone.UsedPorts[ip][protocolPort] = v
-// // 			}
-// // 		}
-// // 	}
-// // 	if len(n.PodsWithAffinity) > 0 {
-// // 		clone.PodsWithAffinity = append([]*PodInfo(nil), n.PodsWithAffinity...)
-// // 	}
-// // 	if len(n.PodsWithRequiredAntiAffinity) > 0 {
-// // 		clone.PodsWithRequiredAntiAffinity = append([]*PodInfo(nil), n.PodsWithRequiredAntiAffinity...)
-// // 	}
-// // 	return clone
-// // }
-
-// // String returns representation of human readable format of this NodeInfo.
-// func (n *NodeInfo) String() string {
-// 	podKeys := make([]string, len(n.Pods))
-// 	for i, p := range n.Pods {
-// 		podKeys[i] = p.Pod.Name
-// 	}
-// 	return fmt.Sprintf("&NodeInfo{Pods:%v, RequestedResource:%#v, UsedPort: %#v, AllocatableResource:%#v}",
-// 		podKeys, n.Requested, n.UsedPorts, n.Allocatable)
-// }
-
 // AddPodInfo adds pod information to this NodeInfo.
 // Consider using this instead of AddPod if a PodInfo is already computed.
 func (n *NodeInfo) AddPodInfo(podInfo *PodInfo) {
@@ -1189,40 +1094,6 @@ func (n *NodeInfo) gpuPodCountUp(uuids string) {
 		n.GPUMetrics[uuid].gpuPodCountUp()
 	}
 }
-
-// // FilterOutPods receives a list of pods and filters out those whose node names
-// // are equal to the node of this NodeInfo, but are not found in the pods of this NodeInfo.
-// //
-// // Preemption logic simulates removal of pods on a node by removing them from the
-// // corresponding NodeInfo. In order for the simulation to work, we call this method
-// // on the pods returned from SchedulerCache, so that predicate functions see
-// // only the pods that are not removed from the NodeInfo.
-// func (n *NodeInfo) FilterOutPods(pods []*corev1.Pod) []*corev1.Pod {
-// 	node := n.Node()
-// 	if node == nil {
-// 		return pods
-// 	}
-// 	filtered := make([]*corev1.Pod, 0, len(pods))
-// 	for _, p := range pods {
-// 		if p.Spec.NodeName != node.Name {
-// 			filtered = append(filtered, p)
-// 			continue
-// 		}
-// 		// If pod is on the given node, add it to 'filtered' only if it is present in nodeInfo.
-// 		podKey, err := GetPodKey(p)
-// 		if err != nil {
-// 			continue
-// 		}
-// 		for _, np := range n.Pods {
-// 			npodkey, _ := GetPodKey(np.Pod)
-// 			if npodkey == podKey {
-// 				filtered = append(filtered, p)
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return filtered
-// }
 
 // GetPodKey returns the string key of a pod.
 func GetPodKey(pod *corev1.Pod) (string, error) {

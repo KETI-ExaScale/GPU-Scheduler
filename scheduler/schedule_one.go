@@ -224,7 +224,7 @@ func (sched *GPUScheduler) createPodToAnotherCluster(ctx context.Context, qpod r
 		// _, err = targetClientset.BatchV1().Jobs(qpod.Pod.Namespace).Create(context.TODO(), newPod., metav1.CreateOptions{})
 		if err != nil {
 			r.KETI_LOG_L3(fmt.Sprintf("<error> failed to create pod {%s} to target cluster {%s} - %s", qpod.Pod.Name, qpod.TargetCluster, err))
-			sched.SchedulingQueue.Add_BackoffQ(&qpod)
+			sched.SchedulingQueue.AddBackoffQ(&qpod)
 			return
 		}
 	} else {
@@ -249,7 +249,7 @@ func (sched *GPUScheduler) createPodToAnotherCluster(ctx context.Context, qpod r
 		_, err = targetClientset.CoreV1().Pods(qpod.Pod.Namespace).Create(context.TODO(), newPod, metav1.CreateOptions{})
 		if err != nil {
 			r.KETI_LOG_L3(fmt.Sprintf("<error> failed to create pod {%s} to target cluster {%s} - %s", qpod.Pod.Name, qpod.TargetCluster, err))
-			sched.SchedulingQueue.Add_BackoffQ(&qpod)
+			sched.SchedulingQueue.AddBackoffQ(&qpod)
 			return
 		}
 	}
@@ -314,7 +314,7 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	sched.UpdateCache() //metric update, score init
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
 		r.KETI_LOG_L3("<error> there isn't node to schedule")
-		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+		sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
 		return
 	}
 
@@ -324,7 +324,7 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	err := sched.schedulePod()
 	if err != nil {
 		r.KETI_LOG_L3(fmt.Sprintf("<error> pod scheduling failed - %s", err))
-		sched.SchedulingQueue.Add_BackoffQ(sched.NewPod)
+		sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
 		return
 	}
 

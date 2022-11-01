@@ -20,7 +20,7 @@ var Scheduler *GPUScheduler
 type GPUScheduler struct {
 	NodeInfoCache           *r.NodeCache
 	SchedulingPolicy        *SchedulingPolicy
-	SchedulingQueue         *r.SchedulingQueue
+	SchedulingQueue         r.SchedulingQueue
 	NewPod                  *r.QueuedPodInfo
 	Framework               framework.GPUSchedulerInterface
 	ScheduleResult          *r.ScheduleResult
@@ -30,7 +30,7 @@ type GPUScheduler struct {
 }
 
 func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error) {
-	sq := r.NewQueue()
+	sq := r.NewSchedulingQueue()
 	sp := NewSchedulingPolicy()
 	nc := r.NewNodeInfoCache(hostKubeClient)
 	err := nc.InitNodeInfoCache()
@@ -102,7 +102,7 @@ func NewSchedulingPolicy() *SchedulingPolicy {
 }
 
 func (sched *GPUScheduler) NextPod() *r.QueuedPodInfo {
-	newPod, err := sched.SchedulingQueue.Pop_AvtiveQ()
+	newPod, err := sched.SchedulingQueue.Pop()
 	if err != nil {
 		r.KETI_LOG_L3(fmt.Sprintf("<error> Get NextPod Error : %s", err))
 		return nil
