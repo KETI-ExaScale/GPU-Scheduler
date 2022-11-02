@@ -33,6 +33,8 @@ type preScoreState4 struct {
 }
 type scoreMap map[string]map[string]int64
 
+type UnsatisfiableConstraintAction string
+
 type preScoreState5 struct {
 	Constraints               []topologySpreadConstraint
 	IgnoredNodes              sets.String

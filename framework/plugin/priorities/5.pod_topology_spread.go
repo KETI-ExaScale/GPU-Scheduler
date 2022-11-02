@@ -31,12 +31,12 @@ import (
 
 type PodTopologySpread struct {
 	systemDefaulted                     bool
-	enableMinDomainsInPodTopologySpread bool
 	defaultConstraints                  []v1.TopologySpreadConstraint
 	services                            corelisters.ServiceLister
 	replicationCtrls                    corelisters.ReplicationControllerLister
 	replicaSets                         appslisters.ReplicaSetLister
 	statefulSets                        appslisters.StatefulSetLister
+	enableMinDomainsInPodTopologySpread bool
 }
 
 func (pl PodTopologySpread) Name() string {
