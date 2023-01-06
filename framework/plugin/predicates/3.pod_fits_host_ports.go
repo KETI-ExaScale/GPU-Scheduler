@@ -29,7 +29,7 @@ func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 			if !fitsPorts(wantPorts, nodeinfo) {
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 			}
 		}
 	}

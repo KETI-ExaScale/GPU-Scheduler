@@ -30,7 +30,7 @@ func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 				}
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 				break
 			}
 		}

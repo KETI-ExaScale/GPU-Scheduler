@@ -75,11 +75,11 @@ func (sched *GPUScheduler) Run(ctx context.Context) {
 }
 
 /*
-   ------  Policy List ------
-	1. node-gpu-score-weight
-	(2. pod-re-schedule-permit)
-	2. nvlink-weight-percentage
-	3. gpu-allocate-prefer
+	   ------  Policy List ------
+		1. node-gpu-score-weight
+		(2. pod-re-schedule-permit)
+		2. nvlink-weight-percentage
+		3. gpu-allocate-prefer
 */
 type SchedulingPolicy struct {
 	NodeWeight             float64
@@ -136,11 +136,7 @@ func (sched *GPUScheduler) InitClusterManager() error {
 		return nil
 	}
 
-	err := sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
-	if err != nil {
-		r.KETI_LOG_L3("<error> Init Cluster Manager->Run scoring plugins error")
-		return err
-	}
+	sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
 
 	var initList []InitStruct
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {

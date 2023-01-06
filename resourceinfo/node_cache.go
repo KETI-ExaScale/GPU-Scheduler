@@ -99,7 +99,7 @@ func IsMasterNode(node *corev1.Node) bool {
 	}
 }
 
-//metric update, score init
+// metric update, score init
 func (c *NodeCache) DumpCache() error {
 	KETI_LOG_L2("\n-----:: Dump Node Metric Cache ::-----")
 
@@ -170,10 +170,7 @@ func (c *NodeCache) NodeCountUP() {
 }
 
 type PodState struct {
-	Pod *corev1.Pod
-	// Used by assumedPod to determinate expiration.
-	deadline *time.Time
-	// Used to block cache from expiring assumedPod if binding still runs
+	Pod   *corev1.Pod
 	State string
 }
 
@@ -237,9 +234,8 @@ func (cache *NodeCache) AddPodState(pod corev1.Pod, s string) error {
 		cache.UpdatePodState(&pod, s)
 	} else {
 		ps := &PodState{
-			Pod:      &pod,
-			deadline: nil,
-			State:    s,
+			Pod:   &pod,
+			State: s,
 		}
 		cache.PodStates[key] = ps
 	}

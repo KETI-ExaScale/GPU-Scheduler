@@ -156,7 +156,7 @@ func (sched *GPUScheduler) addNodeToCache(obj interface{}) {
 	}
 
 	// klog.V(3).InfoS("Add event for node", "node", klog.KObj(node))
-	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue()
+	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(true)
 }
 
 func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
@@ -183,8 +183,13 @@ func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
 	}
 
 	// Only requeue unschedulable pods if the node became more schedulable.
-	if event := nodeSchedulingPropertiesChange(newNode, oldNode); event != nil {
-		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue()
+	event := nodeSchedulingPropertiesChange(newNode, oldNode)
+	if event != nil {
+		if event == &NodeAllocatableChange {
+			sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(false) //flush only unschedulable pod
+		} else {
+			sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(true) //flush all pods
+		}
 	}
 }
 
@@ -345,8 +350,6 @@ func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
 	if err := sched.NodeInfoCache.RemovePod(pod); err != nil {
 		klog.ErrorS(err, "<error> Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
 	}
-
-	// sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.AssignedPodDelete, nil)
 }
 
 func (sched *GPUScheduler) addPolicyToCache(obj interface{}) {

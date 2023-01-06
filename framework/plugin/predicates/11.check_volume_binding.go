@@ -31,7 +31,7 @@ func (pl CheckVolumeBinding) Filter(nodeInfoCache *r.NodeCache, newPod *r.Queued
 				if conflict {
 					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
-					newPod.FilterNode(pl.Name())
+					newPod.FilterNode(nodeName, pl.Name(), "")
 					break
 				}
 			}

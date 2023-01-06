@@ -22,21 +22,21 @@ func (pl PodFitsNodeResources) Filter(nodeInfoCache *r.NodeCache, newPod *r.Queu
 				fmt.Println("//cpu", nodeinfo.NodeMetric.MilliCPUUsed, newPod.RequestedResource.MilliCPU)
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 				continue
 			}
 			if nodeinfo.NodeMetric.MemoryUsed+newPod.RequestedResource.Memory > nodeinfo.NodeMetric.MemoryTotal {
 				fmt.Println("//memory", nodeinfo.NodeMetric.MemoryUsed, newPod.RequestedResource.Memory)
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 				continue
 			}
 			if nodeinfo.NodeMetric.StorageUsed+newPod.RequestedResource.EphemeralStorage > nodeinfo.NodeMetric.StorageTotal {
 				fmt.Println("//storage", nodeinfo.NodeMetric.StorageUsed, newPod.RequestedResource.EphemeralStorage)
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 				continue
 			}
 		}

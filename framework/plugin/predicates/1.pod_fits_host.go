@@ -25,7 +25,7 @@ func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 			if newPod.Pod.Spec.NodeName != nodeName {
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "not match host name")
 			}
 		}
 	}

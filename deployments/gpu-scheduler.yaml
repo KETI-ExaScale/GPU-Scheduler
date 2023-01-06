@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: gpu-scheduler
+  name: keti-gpu-scheduler
+  namespace: gpu
+spec:
+  selector:
+    matchLabels:
+      app: gpu-scheduler
+  template:
+    metadata:
+      labels:
+        app: gpu-scheduler
+      name: gpu-scheduler
+    spec:
+      nodeName: master
+      serviceAccountName: scheduler
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: gpu-schedule
+          image: ketidevit2/keti-gpu-scheduler:v0.273
+          volumeMounts:
+            - name: tz-config
+              mountPath: /etc/localtime
+            - name: gpu-scheduler-configmap
+              mountPath: /gpu-scheduler-configmap
+            - name: config
+              mountPath: /root/.kube/  
+          resources:
+            limits:
+              memory: "200Mi"
+            requests:
+              memory: "200Mi"
+      volumes:
+        - name: tz-config
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Seoul
+        - name: gpu-scheduler-configmap
+          configMap:
+            name: gpu-scheduler-configmap
+        - name: config
+          hostPath:
+            path: /root/.kube

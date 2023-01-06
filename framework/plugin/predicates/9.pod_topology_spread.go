@@ -139,7 +139,7 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 				fmt.Println("calPreFilterState error")
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 				continue
 			}
 
@@ -156,7 +156,7 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 					fmt.Println("Node doesn't have required label", "node", nodeName, "label", tpKey)
 					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
-					newPod.FilterNode(pl.Name())
+					newPod.FilterNode(nodeName, pl.Name(), "")
 					continue
 				}
 
@@ -174,7 +174,7 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 					fmt.Println(err, "Internal error occurred while retrieving value precalculated in PreFilter", "topologyKey", tpKey, "paths", s.TpKeyToCriticalPaths)
 					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
-					newPod.FilterNode(pl.Name())
+					newPod.FilterNode(nodeName, pl.Name(), "")
 					continue
 				}
 
@@ -187,7 +187,7 @@ func (pl PodTopologySpread) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedP
 					fmt.Println("Node failed spreadConstraint: matchNum + selfMatchNum - minMatchNum > maxSkew", "node", nodeName, "topologyKey", tpKey, "matchNum", matchNum, "selfMatchNum", selfMatchNum, "minMatchNum", minMatchNum, "maxSkew", c.MaxSkew)
 					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
-					newPod.FilterNode(pl.Name())
+					newPod.FilterNode(nodeName, pl.Name(), "")
 					continue
 				}
 			}

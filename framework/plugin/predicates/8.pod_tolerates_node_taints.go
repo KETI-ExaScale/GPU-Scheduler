@@ -32,7 +32,7 @@ func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.Qu
 				if !tolerated {
 					nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 					nodeInfoCache.NodeCountDown()
-					newPod.FilterNode(pl.Name())
+					newPod.FilterNode(nodeName, pl.Name(), "")
 					break
 				}
 			}

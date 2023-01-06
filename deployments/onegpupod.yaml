@@ -1,13 +1,15 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: nbody-benchmark-mps-test
+  name: nbody-benchmark-mps-gpu1
   namespace: userpod
 spec:
   template:
-    # metadata:
-    #   annotations:
-    #     clusterName: gpu1
+    metadata:
+      annotations:
+        clusterName: keti-gpu-cluster1
+        priority: L
+        clusterScheduling: false
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler

@@ -18,7 +18,6 @@ package resourceinfo
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,64 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-)
-
-const (
-	Ns            = int(10) //노드 스코어링 단계 수
-	Gs            = int(10) //GPU 스코어링 단계 수
-	SchedulerName = "gpu-scheduler"
-	Policy1       = "node-gpu-score-weight"
-	Policy2       = "pod-re-schedule-permit"
-	Policy3       = "node-reservation-permit"
-	Policy4       = "nvlink-weight-percentage"
-	Policy5       = "gpu-allocate-prefer"
-)
-
-const (
-	MaxScore int = 100
-	MinScore int = 40
-)
-
-type ActionType int64
-
-const (
-	Add    ActionType = 1 << iota // 1
-	Delete                        // 10
-	// UpdateNodeXYZ is only applicable for Node events.
-	UpdateNodeAllocatable // 100
-	UpdateNodeLabel       // 1000
-	UpdateNodeTaint       // 10000
-	UpdateNodeCondition   // 100000
-
-	All ActionType = 1<<iota - 1 // 111111
-
-	// Use the general Update type if you don't either know or care the specific sub-Update type to use.
-	Update = UpdateNodeAllocatable | UpdateNodeLabel | UpdateNodeTaint | UpdateNodeCondition
-)
-
-const (
-	//--[UserPriority]--
-	LowPriority    = 10
-	MiddlePriority = 50
-	HighPriority   = 100
-	Immediatly     = 1500
-)
-
-// GVK is short for group/version/kind, which can uniquely represent a particular API resource.
-type GVK string
-
-// Constants for GVKs.
-const (
-	Pod                   GVK = "Pod"
-	Node                  GVK = "Node"
-	PersistentVolume      GVK = "PersistentVolume"
-	PersistentVolumeClaim GVK = "PersistentVolumeClaim"
-	Service               GVK = "Service"
-	StorageClass          GVK = "storage.k8s.io/StorageClass"
-	CSINode               GVK = "storage.k8s.io/CSINode"
-	CSIDriver             GVK = "storage.k8s.io/CSIDriver"
-	CSIStorageCapacity    GVK = "storage.k8s.io/CSIStorageCapacity"
-	WildCard              GVK = "*"
 )
 
 // ClusterEvent abstracts how a system resource's state gets changed.
@@ -213,14 +154,14 @@ func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
 type QueuedPodInfo struct {
 	*PodInfo
 	PodUID                  types.UID
-	Timestamp               time.Time   //해당 큐에 들어온 시간
-	Attempts                int         //스케줄링 시도 횟수
-	InitialAttemptTimestamp time.Time   //생성후 큐에 최초로 들어온 시간
-	UnschedulablePlugins    sets.String //실패한 단계의 이름
-	TargetCluster           string
-	FilteredCluster         []string
-	PriorityScore           int //우선순위큐 스코어
-	UserPriority            int //사용자 설정 우선순위
+	Timestamp               time.Time //해당 큐에 들어온 시간
+	Attempts                int       //스케줄링 시도 횟수
+	InitialAttemptTimestamp time.Time //큐에 최초로 들어온 시간 (생성시간)
+	Status                  *Status   //파드 스케줄링 상태
+	TargetCluster           string    //생성 클러스터
+	FilteredCluster         []string  //클러스터 매니저가 필터링할 클러스터
+	PriorityScore           int       //우선순위큐 스코어
+	UserPriority            int       //사용자 설정 우선순위
 }
 
 func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
@@ -231,7 +172,7 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 			Timestamp:               time.Now(),
 			Attempts:                0,
 			InitialAttemptTimestamp: time.Now(),
-			UnschedulablePlugins:    sets.NewString(),
+			Status:                  NewStatus(),
 			TargetCluster:           "",
 			FilteredCluster:         nil,
 			PriorityScore:           0,
@@ -240,6 +181,7 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 	}
 
 	priority := regularPriority(pod.Annotations["priority"])
+	targetCluster := pod.Annotations["clusterName"]
 
 	return &QueuedPodInfo{ // Schedule Pod
 		PodUID:                  pod.UID,
@@ -247,8 +189,8 @@ func NewQueuedPodInfo(pod *corev1.Pod) *QueuedPodInfo {
 		Timestamp:               time.Now(),
 		Attempts:                0,
 		InitialAttemptTimestamp: time.Now(),
-		UnschedulablePlugins:    sets.NewString(),
-		TargetCluster:           "",
+		Status:                  NewStatus(),
+		TargetCluster:           targetCluster,
 		FilteredCluster:         nil,
 		PriorityScore:           priority,
 		UserPriority:            priority,
@@ -275,13 +217,13 @@ func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
 		Timestamp:               qpi.Timestamp,
 		Attempts:                qpi.Attempts,
 		InitialAttemptTimestamp: qpi.InitialAttemptTimestamp,
-		UnschedulablePlugins:    qpi.UnschedulablePlugins,
+		Status:                  qpi.Status,
 		TargetCluster:           qpi.TargetCluster,
 	}
 }
 
-func (qpi *QueuedPodInfo) FilterNode(stage string) {
-	qpi.UnschedulablePlugins.Insert(stage)
+func (qpi *QueuedPodInfo) FilterNode(nodename string, stage string, reason string) {
+	qpi.Status.FilteredPlugin[nodename] = Desc{stage, reason}
 }
 
 // func (qpi *QueuedPodInfo) Activate() {
@@ -438,50 +380,50 @@ type WeightedAffinityTerm struct {
 	Weight int32
 }
 
-// Diagnosis records the details to diagnose a scheduling failure.
-type Diagnosis struct {
-	NodeToStatusMap      NodeToStatusMap
-	UnschedulablePlugins sets.String
-	// PostFilterMsg records the messages returned from PostFilterPlugins.
-	PostFilterMsg string
-}
+// // Diagnosis records the details to diagnose a scheduling failure.
+// type Diagnosis struct {
+// 	NodeToStatusMap      NodeToStatusMap
+// 	UnschedulablePlugins sets.String
+// 	// PostFilterMsg records the messages returned from PostFilterPlugins.
+// 	PostFilterMsg string
+// }
 
-// FitError describes a fit error of a pod.
-type FitError struct {
-	Pod         *corev1.Pod
-	NumAllNodes int
-	Diagnosis   Diagnosis
-}
+// // FitError describes a fit error of a pod.
+// type FitError struct {
+// 	Pod         *corev1.Pod
+// 	NumAllNodes int
+// 	Diagnosis   Diagnosis
+// }
 
-const (
-	// NoNodeAvailableMsg is used to format message when no nodes available.
-	NoNodeAvailableMsg = "0/%v nodes are available"
-)
+// const (
+// 	// NoNodeAvailableMsg is used to format message when no nodes available.
+// 	NoNodeAvailableMsg = "0/%v nodes are available"
+// )
 
-// Error returns detailed information of why the pod failed to fit on each node
-func (f *FitError) Error() string {
-	reasons := make(map[string]int)
-	for _, status := range f.Diagnosis.NodeToStatusMap {
-		for _, reason := range status.Reasons() {
-			reasons[reason]++
-		}
-	}
+// // Error returns detailed information of why the pod failed to fit on each node
+// func (f *FitError) Error() string {
+// 	reasons := make(map[string]int)
+// 	for _, status := range f.Diagnosis.NodeToStatusMap {
+// 		for _, reason := range status.Reasons() {
+// 			reasons[reason]++
+// 		}
+// 	}
 
-	sortReasonsHistogram := func() []string {
-		var reasonStrings []string
-		for k, v := range reasons {
-			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
-		}
-		sort.Strings(reasonStrings)
-		return reasonStrings
-	}
-	reasonMsg := fmt.Sprintf(NoNodeAvailableMsg+": %v.", f.NumAllNodes, strings.Join(sortReasonsHistogram(), ", "))
-	postFilterMsg := f.Diagnosis.PostFilterMsg
-	if postFilterMsg != "" {
-		reasonMsg += " " + postFilterMsg
-	}
-	return reasonMsg
-}
+// 	sortReasonsHistogram := func() []string {
+// 		var reasonStrings []string
+// 		for k, v := range reasons {
+// 			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
+// 		}
+// 		sort.Strings(reasonStrings)
+// 		return reasonStrings
+// 	}
+// 	reasonMsg := fmt.Sprintf(NoNodeAvailableMsg+": %v.", f.NumAllNodes, strings.Join(sortReasonsHistogram(), ", "))
+// 	postFilterMsg := f.Diagnosis.PostFilterMsg
+// 	if postFilterMsg != "" {
+// 		reasonMsg += " " + postFilterMsg
+// 	}
+// 	return reasonMsg
+// }
 
 func newAffinityTerm(pod *corev1.Pod, term *corev1.PodAffinityTerm) (*AffinityTerm, error) {
 	selector, err := metav1.LabelSelectorAsSelector(term.LabelSelector)
@@ -665,7 +607,7 @@ func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Cl
 	}
 }
 
-//return whether the node is GPUNode or not
+// return whether the node is GPUNode or not
 func isNonGPUNode(node *corev1.Node) bool {
 	if _, ok := node.Labels["gpu"]; ok {
 		return false
@@ -775,11 +717,11 @@ type GPUMetric struct {
 	GPUMemoryTotal      int64
 	GPUMemoryFree       int64
 	GPUMemoryUsed       int64
-	GPUTemperature      int64
 	PodCount            int64
 	GPUFlops            int64
 	GPUArch             int64
 	GPUUtil             int64
+	GPUTemperature      int64
 	GPUMaxOperativeTemp int64
 	GPUSlowdownTemp     int64
 	GPUShutdownTemp     int64
@@ -1219,3 +1161,65 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 		*protocol = string(v1.ProtocolTCP)
 	}
 }
+
+type Code int
+
+const (
+	Wait                         Code = iota //pending
+	Error                                    //error
+	Unschedulable                            //need rescheduling or wait
+	UnschedulableAndUnresolvable             //cannot scheduling
+)
+
+type Desc [2]string
+
+type Status struct {
+	Code           Code            //파드 스케줄링 상태
+	Reasons        string          //이유
+	Err            error           //에러내용
+	FilteredPlugin map[string]Desc //filter plugin 노드네임-단계-이유
+}
+
+func NewStatus() *Status {
+	return &Status{
+		Code:           Wait,
+		Reasons:        "",
+		Err:            nil,
+		FilteredPlugin: make(map[string]Desc),
+	}
+}
+
+// // GetPodFullName returns a name that uniquely identifies a pod.
+// func GetPodFullName(pod *v1.Pod) string {
+// 	// Use underscore as the delimiter because it is not allowed in pod name
+// 	// (DNS subdomain format).
+// 	return pod.Name + "_" + pod.Namespace
+// }
+
+// // GetPodStartTime returns start time of the given pod or current timestamp
+// // if it hasn't started yet.
+// func GetPodStartTime(pod *v1.Pod) *metav1.Time {
+// 	if pod.Status.StartTime != nil {
+// 		return pod.Status.StartTime
+// 	}
+// 	// Assumed pods and bound pods that haven't started don't have a StartTime yet.
+// 	return &metav1.Time{Time: time.Now()}
+// }
+
+// // MoreImportantPod return true when priority of the first pod is higher than
+// // the second one. If two pods' priorities are equal, compare their StartTime.
+// // It takes arguments of the type "interface{}" to be used with SortableList,
+// // but expects those arguments to be *v1.Pod.
+// func MoreImportantPod(pod1, pod2 *v1.Pod) bool {
+// 	p1 := corev1helpers.PodPriority(pod1)
+// 	p2 := corev1helpers.PodPriority(pod2)
+// 	if p1 != p2 {
+// 		return p1 > p2
+// 	}
+// 	return GetPodStartTime(pod1).Before(GetPodStartTime(pod2))
+// }
+
+// // DeletePod deletes the given <pod> from API server
+// func DeletePod(cs kubernetes.Interface, pod *v1.Pod) error {
+// 	return cs.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+// }

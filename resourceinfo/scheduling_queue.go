@@ -7,16 +7,14 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
-
-	internal "gpu-scheduler/internal"
 )
 
 const (
-	PodMaxBackoffDuration             time.Duration = 30 * time.Second
-	PodMaxInUnschedulablePodsDuration time.Duration = 5 * time.Minute
+	UnscehdulableDuration                time.Duration = 30 * time.Second //Unschedulable Pod Duration
+	UnschedulableAndUnresolvableDuration time.Duration = 1 * time.Minute  //UnschedulableAndUnresolvable Pod Duration
+	ErrorDuration                        time.Duration = 3 * time.Minute  //Error Pod Duration
 )
 
 type SchedulingQueue interface {
@@ -26,19 +24,19 @@ type SchedulingQueue interface {
 	Pop() (*QueuedPodInfo, error)        //activeQ Pop
 	Update(oldPod, newPod *v1.Pod) error //update pod in activeQ/backoffQ/unschedulable
 	Delete(pod *v1.Pod) error            //delete pod in activeQ/backoffQ/unschedulable
-	MoveAllToActiveOrBackoffQueue() error
+	MoveAllToActiveOrBackoffQueue(flag bool) error
 	// PendingPods() []*v1.Pod
 	Close()
 	Run()
 }
 
-type PriorityQueue struct {
-	activeQ     *internal.Heap
-	podBackoffQ *internal.Heap
-	lock        *sync.Mutex
-	cond        *sync.Cond
-	stop        chan struct{}
-	closed      bool
+type PriorityQueue struct { //스케줄러에서 사용하는 우선순위 큐
+	activeQ  *Heap
+	BackoffQ *Heap
+	lock     *sync.Mutex
+	cond     *sync.Cond
+	stop     chan struct{}
+	closed   bool
 }
 
 var _ SchedulingQueue = &PriorityQueue{} // priority queue implement scheduling queue
@@ -49,18 +47,18 @@ func NewSchedulingQueue() SchedulingQueue {
 
 func NewPriorityQueue() *PriorityQueue {
 	sq := &PriorityQueue{
-		activeQ:     internal.New(podInfoKeyFunc, podsCompareActivePriority),
-		podBackoffQ: internal.New(podInfoKeyFunc, podsCompareBackoffCompleted),
-		lock:        new(sync.Mutex),
-		stop:        make(chan struct{}),
-		closed:      false,
+		activeQ:  New(podInfoKeyFunc, podsCompareActivePriority),
+		BackoffQ: New(podInfoKeyFunc, podsCompareBackoffCompleted),
+		lock:     new(sync.Mutex),
+		stop:     make(chan struct{}),
+		closed:   false,
 	}
 	sq.cond = sync.NewCond(sq.lock)
 	return sq
 }
 
 func (p *PriorityQueue) Run() {
-	go wait.Until(p.flushBackoffQCompleted, 5*time.Second, p.stop)
+	go wait.Until(p.flushBackoffQCompleted, 5*time.Second, p.stop) //backoffQ >> activeQ flush routine
 	// go wait.Until(p.flushUnschedulablePodsLeftover, 30*time.Second, p.stop)
 }
 
@@ -79,6 +77,7 @@ func (p *PriorityQueue) Add(pod *v1.Pod) error {
 	was_empty := p.Empty()
 	pInfo := NewQueuedPodInfo(pod)
 	p.activeQ.Add(pInfo)
+	p.PrintActiveQ()
 
 	if was_empty {
 		p.cond.Broadcast()
@@ -93,7 +92,8 @@ func (p *PriorityQueue) AddBackoffQ(qp *QueuedPodInfo) error {
 
 	//queue pod info update
 	qp.Timestamp = time.Now()
-	p.podBackoffQ.Add(qp)
+	p.BackoffQ.Add(qp)
+	p.PrintBackoffQ()
 
 	return nil
 }
@@ -119,18 +119,18 @@ func (p *PriorityQueue) Pop() (*QueuedPodInfo, error) {
 	return pInfo, nil
 }
 
-func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue() error {
+func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(flag bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	broadcast := false
 	for {
-		rawPodInfo := p.podBackoffQ.Peek()
+		rawPodInfo := p.BackoffQ.Peek()
 		if rawPodInfo == nil {
 			break
 		}
 		qp := rawPodInfo.(*QueuedPodInfo)
 
-		_, err := p.podBackoffQ.Pop()
+		_, err := p.BackoffQ.Pop()
 		if err != nil {
 			KETI_LOG_L3(fmt.Sprintf("Unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
@@ -164,17 +164,31 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 	defer p.lock.Unlock()
 	broadcast := false
 	for {
-		rawPodInfo := p.podBackoffQ.Peek()
+		rawPodInfo := p.BackoffQ.Peek()
 		if rawPodInfo == nil {
 			break
 		}
 		qp := rawPodInfo.(*QueuedPodInfo)
-		boTime := qp.Timestamp.Add(PodMaxBackoffDuration)
+		var boTime time.Time
+
+		if qp.Status.Code == Unschedulable {
+			boTime = qp.Timestamp.Add(UnscehdulableDuration)
+		} else if qp.Status.Code == UnschedulableAndUnresolvable {
+			boTime = qp.Timestamp.Add(UnschedulableAndUnresolvableDuration)
+		} else if qp.Status.Code == Error {
+			boTime = qp.Timestamp.Add(ErrorDuration)
+		} else {
+			KETI_LOG_L3(fmt.Sprintf("QueuePodInfo unknown status :%s {%s}", qp.Status.Code, qp.Pod.Name))
+		}
 
 		if !boTime.After(time.Now()) {
+			fmt.Println("!boTime.After(time.Now())")
 			break
+		} else {
+			fmt.Println("boTime.After(time.Now())")
 		}
-		_, err := p.podBackoffQ.Pop()
+
+		_, err := p.BackoffQ.Pop()
 		if err != nil {
 			KETI_LOG_L3(fmt.Sprintf("Unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
@@ -183,6 +197,8 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 		qp.PriorityScore = qp.UserPriority + qp.Attempts*10
 		p.activeQ.Add(rawPodInfo)
 		broadcast = true
+
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	if broadcast {
@@ -207,9 +223,9 @@ func (p *PriorityQueue) Update(oldPod, newPod *v1.Pod) error {
 			return p.activeQ.Update(pInfo)
 		}
 
-		if oldPodInfo, exists, _ := p.podBackoffQ.Get(oldPodInfo); exists {
+		if oldPodInfo, exists, _ := p.BackoffQ.Get(oldPodInfo); exists {
 			pInfo := updatePod(oldPodInfo, newPod)
-			return p.podBackoffQ.Update(pInfo)
+			return p.BackoffQ.Update(pInfo)
 		}
 	}
 
@@ -219,7 +235,7 @@ func (p *PriorityQueue) Update(oldPod, newPod *v1.Pod) error {
 	// 	p.PodNominator.UpdateNominatedPod(oldPod, pInfo.PodInfo)
 	// 	if isPodUpdated(oldPod, newPod) {
 	// 		if p.isPodBackingoff(usPodInfo) {
-	// 			if err := p.podBackoffQ.Add(pInfo); err != nil {
+	// 			if err := p.BackoffQ.Add(pInfo); err != nil {
 	// 				return err
 	// 			}
 	// 			p.unschedulablePods.delete(usPodInfo.Pod)
@@ -249,8 +265,7 @@ func (p *PriorityQueue) Update(oldPod, newPod *v1.Pod) error {
 
 func newQueuedPodInfoForLookup(pod *v1.Pod, plugins ...string) *QueuedPodInfo {
 	return &QueuedPodInfo{
-		PodInfo:              &PodInfo{Pod: pod},
-		UnschedulablePlugins: sets.NewString(plugins...),
+		PodInfo: &PodInfo{Pod: pod},
 	}
 }
 
@@ -260,7 +275,7 @@ func (p *PriorityQueue) Delete(pod *v1.Pod) error {
 
 	if err := p.activeQ.Delete(newQueuedPodInfoForLookup(pod)); err != nil {
 		// The item was probably not found in the activeQ.
-		p.podBackoffQ.Delete(newQueuedPodInfoForLookup(pod))
+		p.BackoffQ.Delete(newQueuedPodInfoForLookup(pod))
 		// p.unschedulablePods.delete(pod)
 	}
 	return nil
@@ -286,7 +301,7 @@ func MetaNamespaceKeyFunc(obj interface{}) (string, error) {
 	return meta.GetName(), nil
 }
 
-//lessFunc_activeQ_우선순위 비교
+// lessFunc_activeQ_우선순위 비교
 func podsCompareActivePriority(podInfo1, podInfo2 interface{}) bool {
 	pInfo1 := podInfo1.(*QueuedPodInfo)
 	pInfo2 := podInfo2.(*QueuedPodInfo)
@@ -295,7 +310,7 @@ func podsCompareActivePriority(podInfo1, podInfo2 interface{}) bool {
 	return bo1 > bo2
 }
 
-//lessFunc_backoffQ_큐인서트시간 비교
+// lessFunc_backoffQ_큐인서트시간 비교
 func podsCompareBackoffCompleted(podInfo1, podInfo2 interface{}) bool {
 	pInfo1 := podInfo1.(*QueuedPodInfo)
 	pInfo2 := podInfo2.(*QueuedPodInfo)
@@ -326,13 +341,21 @@ func podsCompareBackoffCompleted(podInfo1, podInfo2 interface{}) bool {
 // 	}
 // }
 
-// func (p *PriorityQueue) PrintActiveQ() {
-// 	KETI_LOG_L1("<test> ActiveQ: %v", *p.activeQ)
-// }
+func (p *PriorityQueue) PrintActiveQ() {
+	items := p.activeQ.List()
+	KETI_LOG_L1("<test> active queue\n")
+	for i := 0; i < len(items); i++ {
+		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, reschedule: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
+	}
+}
 
-// func (p *PriorityQueue) PrintBackoffQ() {
-// 	KETI_LOG_L1("<test> BackiffQ: %v", *p.podBackoffQ)
-// }
+func (p *PriorityQueue) PrintBackoffQ() {
+	items := p.BackoffQ.List()
+	KETI_LOG_L1("<test> backoff queue\n")
+	for i := 0; i < len(items); i++ {
+		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, reschedule: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
+	}
+}
 
 // func (p *PriorityQueue) PendingPods() []*v1.Pod {
 // 	return nil

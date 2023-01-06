@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler
+  namespace: gpu
+  labels:
+    component: gpu-scheduler
+    app: gpu-scheduler
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  ports:
+  - port: 8888
+    targetPort: 8888
+    name: server
+  selector:
+    component: gpu-scheduler

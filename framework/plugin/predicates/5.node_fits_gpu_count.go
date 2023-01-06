@@ -22,7 +22,7 @@ func (pl NodeFitsGPUCount) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 				fmt.Println("<test> ", nodeinfo.PluginResult.AvailableGPUCount, newPod.RequestedResource.GPUCount)
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), "")
 			}
 		}
 	}

@@ -20,7 +20,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"time"
 
 	// batchv1 "k8s.io/api/batch/v1"
 
@@ -39,7 +38,7 @@ const (
 	clusterBinding     = 3
 )
 
-//metric update, score init
+// metric update, score init
 func (sched *GPUScheduler) UpdateCache() {
 	r.KETI_LOG_L3("[STEP 1] Get Multi Metrics From KETI-GPU-Metric-Collector")
 	r.KETI_LOG_L2("# Sending gRPC Request To Metric Collector ...")
@@ -85,18 +84,7 @@ func (sched *GPUScheduler) UpdateCache() {
 }
 
 func (sched *GPUScheduler) checkScheduleType() int {
-	var targetCluster string
-	if sched.NewPod.TargetCluster != "" {
-		targetCluster = sched.NewPod.TargetCluster
-	} else {
-		if sched.NewPod.Pod.Annotations["clusterName"] == "" {
-			fmt.Println("<test> here")
-			targetCluster = ""
-		} else {
-			targetCluster = sched.NewPod.Pod.Annotations["clusterName"]
-		}
-	}
-
+	targetCluster := sched.NewPod.TargetCluster
 	r.KETI_LOG_L1(fmt.Sprintf("<test> check pod annotation[clusterName]: %s", targetCluster))
 
 	if targetCluster == "" {
@@ -126,7 +114,9 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 
 	r.KETI_LOG_L3("\n-----:: Pod Scheduling Start ::-----")
 	r.KETI_LOG_L2(fmt.Sprintf("- POD NAME {%s}", sched.NewPod.Pod.Name))
-
+	fmt.Println("<test> ", sched.NewPod.Attempts, sched.NewPod.PriorityScore)
+	sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
+	return
 	r.KETI_LOG_L1(fmt.Sprintf("<test> pod request resource: %+v", sched.NewPod.RequestedResource))
 
 	flag := sched.checkScheduleType()
@@ -145,7 +135,7 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	}
 }
 
-//write clusterName to pod annotation
+// write clusterName to pod annotation
 func (sched *GPUScheduler) patchPodAnnotationClusterName(clusterName string) error {
 	r.KETI_LOG_L2("# write clusterName in pod annotation")
 
@@ -306,15 +296,15 @@ func (sched *GPUScheduler) clusterScheduleOne(ctx context.Context) {
 func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	r.KETI_LOG_L2("# Node Scheduling Start")
 
-	pod := sched.NewPod.Pod
-	startTime := time.Now()
+	newPod := sched.NewPod
 	sched.frameworkForPod()
 
 	//[STEP 1] Update Scheduler Cache
 	sched.UpdateCache() //metric update, score init
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
-		r.KETI_LOG_L3("<error> there isn't node to schedule")
-		sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
+		r.KETI_LOG_L3("<error> There is No Deployable Node >> Cannot Get Node Metric")
+		newPod.Status.Reasons = "Cannot Get Node Metric"
+		sched.SchedulingQueue.AddBackoffQ(newPod)
 		return
 	}
 
@@ -323,30 +313,28 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	//[STEP 2,3] Filtering/Scoring Node/GPU
 	err := sched.schedulePod()
 	if err != nil {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> pod scheduling failed - %s", err))
-		sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
+		r.KETI_LOG_L3(fmt.Sprintf("<error> Failed Pod Scheduling >> Reason:%s", err.Error()))
+		newPod.Status.Reasons = err.Error()
+		//스케줄링 실패 원인 분석
+		sched.SchedulingQueue.AddBackoffQ(newPod)
 		return
 	}
 
 	//[STEP 4]Get Best Node/GPU
 	sched.GetBestNodeAndGPU()
-	sched.NodeInfoCache.UpdatePodState(pod, r.Assumed)
+	sched.NodeInfoCache.UpdatePodState(newPod.Pod, r.Assumed)
 	sched.NodeInfoCache.GPUPodCountUp(sched.ScheduleResult.BestNode, sched.ScheduleResult.BestGPU)
 
-	elapsedTime := time.Since(startTime)
-
-	r.KETI_LOG_L2(fmt.Sprintf("- Scheduling Time : %f", elapsedTime.Seconds()))
-
 	//[STEP 5] Binding Pod To Node
-	go sched.Binding(ctx, *sched.NewPod, *sched.ScheduleResult)
+	go sched.Binding(ctx, *newPod, *sched.ScheduleResult)
 }
 
 func (sched *GPUScheduler) schedulePod() error {
 	//[STEP 2] Filtering Stage
 	r.KETI_LOG_L3("[STEP 2] Run Filtering Plugins")
-	err := sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
-	if err != nil {
-		return fmt.Errorf("filtering failed - %s (unschedulable plugins: %s)", err, sched.NewPod.UnschedulablePlugins)
+	sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
+	if sched.NodeInfoCache.AvailableNodeCount == 0 {
+		return fmt.Errorf("Filtered All Nodes")
 	}
 
 	//[STEP 3] Scoring Stage
@@ -358,10 +346,7 @@ func (sched *GPUScheduler) schedulePod() error {
 		r.KETI_LOG_L3(fmt.Sprintf("(policy 2) gpu-allocate-prefer : %s", sched.SchedulingPolicy.GPUAllocatePrefer))
 		r.KETI_LOG_L3(">> Run GPUPodBinpackFramework")
 	}
-	err = sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
-	if err != nil {
-		return fmt.Errorf("scoring failed (reason: %s)", err)
-	}
+	sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
 
 	return nil
 }
@@ -528,7 +513,7 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 }
 
 func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
-	r.KETI_LOG_L2("S#20. Check NVLink GPU")
+	r.KETI_LOG_L2("S#19. Check NVLink GPU")
 	r.KETI_LOG_L3(fmt.Sprintf("(policy 3) nvlink-weight-percentage : %d %%", sched.SchedulingPolicy.NVLinkWeightPercentage))
 	for _, nvl := range nodeinfo.NodeMetric.NVLinkList {
 		if nodeinfo.PluginResult.GPUScores[nvl.GPU1].IsFiltered ||
@@ -544,6 +529,10 @@ func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score))
 	}
 }
+
+// func (sched *GPUScheduler) checkReserveResources() {
+// 	if sched.
+// }
 
 // func (sched *GPUScheduler) PostEvent(event *corev1.Event) {
 // 	_, err := sched.NodeInfoCache.HostKubeClient.CoreV1().Events(event.InvolvedObject.Namespace).Update(context.TODO(), event, metav1.UpdateOptions{})

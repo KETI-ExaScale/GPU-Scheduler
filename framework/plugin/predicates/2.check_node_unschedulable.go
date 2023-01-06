@@ -29,7 +29,7 @@ func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.Qu
 			if nodeinfo.Node().Spec.Unschedulable && !podToleratesUnschedulable {
 				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(pl.Name())
+				newPod.FilterNode(nodeName, pl.Name(), fmt.Sprintf(""))
 			}
 		}
 	}

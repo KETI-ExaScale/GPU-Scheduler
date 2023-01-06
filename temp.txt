@@ -1,0 +1,21 @@
+
+-----:: Pod Scheduling Start ::-----
+- POD NAME {nbody-benchmark-mps-test-8kkrs}
+check pod annotation[clusterName]: keti-gpu-cluster2
+# need node scheduling
+# Node Scheduling Start
+[STEP 1] Get Multi Metrics From KETI-GPU-Metric-Collector
+[STEP 2] Run Filtering Plugins
+[STEP 3] Run Scoring Plugins
+[STEP 4] Get Best Node/GPU
+[STEP 5] Binding Pod To Target Node
+-----:: Successfully Assign Pod {nbody-benchmark-mps-test-8kkrs} ::-----
+
+-----:: Pod Scheduling Start ::-----
+- POD NAME {nbody-benchmark-mps-test-8kkrs}
+check pod annotation[clusterName]: keti-gpu-cluster2
+# need cluster binding
+# Create Pod To Another Cluster
+# write clusterName in pod annotation
+-----:: Successfully Create Pod {nbody-benchmark-mps-test-8kkrs} To Target Cluster ::-----
+

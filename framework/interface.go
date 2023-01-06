@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"fmt"
 	"gpu-scheduler/framework/plugin/predicates"
 	"gpu-scheduler/framework/plugin/priorities"
 	r "gpu-scheduler/resourceinfo"
@@ -9,9 +8,9 @@ import (
 
 type GPUSchedulerInterface interface {
 	//RunPreFilteringPlugins()
-	RunFilteringPlugins(*r.NodeCache, *r.QueuedPodInfo) error
+	RunFilteringPlugins(*r.NodeCache, *r.QueuedPodInfo)
 	//RunPostFilteringPlugins()
-	RunScoringPlugins(*r.NodeCache, *r.QueuedPodInfo) error
+	RunScoringPlugins(*r.NodeCache, *r.QueuedPodInfo)
 }
 
 func GPUPodSpreadFramework() GPUSchedulerInterface {
@@ -24,7 +23,7 @@ func GPUPodSpreadFramework() GPUSchedulerInterface {
 			predicates.NodeFitsGPUCount{},
 			predicates.PodFitsNodeResources{},
 			predicates.MatchNodeSelector{},
-			predicates.PodToleratesNodeTaints{},
+			// predicates.PodToleratesNodeTaints{},
 			predicates.PodTopologySpread{},
 			predicates.InterPodAffinity{},
 			predicates.CheckVolumeBinding{},
@@ -52,7 +51,7 @@ func GPUPodSpreadFramework() GPUSchedulerInterface {
 			priorities.GPUPower{},
 			priorities.GPUBandwidth{},
 			// priorities.GPUDirectStoragePriority{},
-			priorities.BalancedGPUProcessType{},
+			// priorities.BalancedGPUProcessType{},
 		},
 	}
 }
@@ -108,7 +107,7 @@ func NonGPUPodFramework() GPUSchedulerInterface {
 			predicates.PodFitsHostPorts{},
 			predicates.PodFitsNodeResources{},
 			predicates.MatchNodeSelector{},
-			predicates.PodToleratesNodeTaints{},
+			// predicates.PodToleratesNodeTaints{},
 			predicates.PodTopologySpread{},
 			predicates.InterPodAffinity{},
 			predicates.CheckVolumeBinding{},
@@ -171,21 +170,19 @@ type ScorePlugin interface {
 	Debugg(nodeInfoCache *r.NodeCache)
 }
 
-func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
+func (sf GPUSchedulerFramework) RunFilteringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, fp := range sf.Filtering {
 		fp.Debugg()
 		fp.Filter(nodeInfoCache, newPod)
 		if nodeInfoCache.AvailableNodeCount == 0 {
-			return fmt.Errorf("there isn't any node to schedule")
+			return
 		}
 	}
-	return nil
 }
 
-func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) error {
+func (sf GPUSchedulerFramework) RunScoringPlugins(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, sp := range sf.Scoring {
 		sp.Score(nodeInfoCache, newPod)
 		sp.Debugg(nodeInfoCache)
 	}
-	return nil
 }
