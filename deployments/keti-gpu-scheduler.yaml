@@ -53,7 +53,7 @@ spec:
         app: gpu-scheduler
       name: gpu-scheduler
     spec:
-      nodeName: master
+      nodeName: c1-master
       serviceAccountName: scheduler
       imagePullSecrets:
         - name: regcred
