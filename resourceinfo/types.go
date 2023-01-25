@@ -34,6 +34,16 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type Code int
+
+const (
+	Success                      Code = iota //not filtered
+	Wait                                     //pending
+	Error                                    //error
+	Unschedulable                            //need rescheduling or wait
+	UnschedulableAndUnresolvable             //cannot scheduling
+)
+
 // ClusterEvent abstracts how a system resource's state gets changed.
 // Resource represents the standard API resources such as Pod, Node, etc.
 // ActionType denotes the specific change such as Add, Update or Delete.
@@ -71,7 +81,7 @@ func (sr *ScheduleResult) InitResult() {
 type PluginResult struct {
 	AvailableGPUCount int
 	IsFiltered        bool
-	FilteredStage     string
+	FilteredStatus    FilterStatus
 	NodeScore         int
 	GPUScores         map[string]*GPUScore
 	TotalGPUScore     int
@@ -80,11 +90,18 @@ type PluginResult struct {
 }
 
 type GPUScore struct {
-	UUID          string
-	IsFiltered    bool
-	FilteredStage string
-	GPUScore      int
-	IsSelected    bool
+	UUID           string
+	IsFiltered     bool
+	FilteredStatus FilterStatus
+	GPUScore       int
+	IsSelected     bool
+}
+
+type FilterStatus struct {
+	Code   Code //Unschedulable, UnschedulableAndUnresolvable, Error
+	Stage  string
+	Reason string
+	Error  error
 }
 
 func (pr *PluginResult) GPUCountUp() {
@@ -99,7 +116,7 @@ func NewPluginResult() *PluginResult {
 	return &PluginResult{
 		AvailableGPUCount: 0,
 		IsFiltered:        false,
-		FilteredStage:     "",
+		FilteredStatus:    NewFilterStatus(),
 		NodeScore:         MinScore,
 		GPUScores:         make(map[string]*GPUScore),
 		TotalGPUScore:     MinScore,
@@ -111,7 +128,7 @@ func NewPluginResult() *PluginResult {
 func (pr *PluginResult) InitPluginResult() {
 	pr.AvailableGPUCount = 0
 	pr.IsFiltered = false
-	pr.FilteredStage = ""
+	pr.FilteredStatus = NewFilterStatus()
 	pr.NodeScore = MinScore
 	for uuid, gpuscore := range pr.GPUScores {
 		gpuscore.InitGPUScore(uuid)
@@ -123,32 +140,41 @@ func (pr *PluginResult) InitPluginResult() {
 
 func NewGPUScore(uuid string) *GPUScore {
 	return &GPUScore{
-		UUID:          uuid,
-		IsFiltered:    false,
-		FilteredStage: "",
-		GPUScore:      MinScore,
-		IsSelected:    false,
+		UUID:           uuid,
+		IsFiltered:     false,
+		FilteredStatus: NewFilterStatus(),
+		GPUScore:       MinScore,
+		IsSelected:     false,
 	}
 }
 
 func (gs *GPUScore) InitGPUScore(uuid string) {
 	gs.UUID = uuid
 	gs.GPUScore = MinScore
-	gs.FilteredStage = ""
+	gs.FilteredStatus = NewFilterStatus()
 	gs.IsFiltered = false
 	gs.IsSelected = false
 }
 
-func (pr *PluginResult) FilterNode(node string, stage string) {
-	KETI_LOG_L1(fmt.Sprintf("# node {%s} filtered, stage = %s", node, stage))
-	pr.IsFiltered = true
-	pr.FilteredStage = stage
+func NewFilterStatus() FilterStatus {
+	return FilterStatus{
+		Code:   Success,
+		Stage:  "",
+		Reason: "",
+		Error:  nil,
+	}
 }
 
-func (gs *GPUScore) FilterGPU(node string, gpu string, stage string) {
-	KETI_LOG_L1(fmt.Sprintf("# node {%s} - gpu {%s} filtered, stage = %s", node, gpu, stage))
+func (pr *PluginResult) FilterNode(node string, status FilterStatus) {
+	KETI_LOG_L1(fmt.Sprintf("# node {%s} filtered, stage = %s", node, status.Stage))
+	pr.IsFiltered = true
+	pr.FilteredStatus = status
+}
+
+func (gs *GPUScore) FilterGPU(node string, gpu string, status FilterStatus) {
+	KETI_LOG_L1(fmt.Sprintf("# node {%s} - gpu {%s} filtered, stage = %s", node, gpu, status.Stage))
 	gs.IsFiltered = true
-	gs.FilteredStage = stage
+	gs.FilteredStatus = status
 }
 
 type QueuedPodInfo struct {
@@ -222,26 +248,34 @@ func (qpi *QueuedPodInfo) DeepCopy() *QueuedPodInfo {
 	}
 }
 
-func (qpi *QueuedPodInfo) FilterNode(nodename string, stage string, reason string) {
-	qpi.Status.FilteredPlugin[nodename] = Desc{stage, reason}
-}
-
-// func (qpi *QueuedPodInfo) Activate() {
-// 	qpi.UnschedulablePlugins = nil
-// 	qpi.Timestamp = time.Now()
-// 	qpi.Attempts++
-// }
-
 type PodInfo struct {
 	Pod                        *corev1.Pod
 	RequiredAffinityTerms      []AffinityTerm
 	RequiredAntiAffinityTerms  []AffinityTerm
 	PreferredAffinityTerms     []WeightedAffinityTerm
 	PreferredAntiAffinityTerms []WeightedAffinityTerm
+	PodVolumesByNode           map[string]*PodVolumes
 	ParseError                 error
 	RequestedResource          *PodResource
 	IsGPUPod                   bool
 	ReserveNode                string
+}
+
+type PodVolumes struct {
+	// StaticBindings are binding decisions for PVCs which can be bound to
+	// pre-provisioned static PVs.
+	StaticBindings []*BindingInfo
+	// DynamicProvisions are PVCs that require dynamic provisioning
+	DynamicProvisions []*v1.PersistentVolumeClaim
+}
+
+// BindingInfo holds a binding between PV and PVC.
+type BindingInfo struct {
+	// PVC that needs to be bound
+	Pvc *v1.PersistentVolumeClaim
+
+	// Proposed PV to bind to this PVC
+	Pv *v1.PersistentVolume
 }
 
 func NewInitPodInfo() *PodInfo {
@@ -530,21 +564,42 @@ type ImageStateSummary struct {
 
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
-	node                         *corev1.Node
-	Pods                         []*PodInfo
-	PodsWithAffinity             []*PodInfo
+	// Overall node information.
+	node *corev1.Node
+	// Pods running on the node.
+	Pods []*PodInfo
+	// The subset of pods with affinity.
+	PodsWithAffinity []*PodInfo
+	// The subset of pods with required anti-affinity.
 	PodsWithRequiredAntiAffinity []*PodInfo
-	UsedPorts                    HostPortInfo
-	ImageStates                  map[string]*ImageStateSummary
-	PVCRefCounts                 map[string]int
-	MetricCollectorIP            string
-	NodeMetric                   *NodeMetric
-	GPUMetrics                   map[string]*GPUMetric
-	IsGPUNode                    bool
-	PluginResult                 *PluginResult
-	Requested                    *Resource
-	Allocatable                  *Resource
-	ReservePodList               sets.String
+	// Ports allocated on the node.
+	UsedPorts HostPortInfo
+	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
+	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
+	// state information.
+	ImageStates map[string]*ImageStateSummary
+	// PVCRefCounts contains a mapping of PVC names to the number of pods on the node using it.
+	// Keys are in the format "namespace/name".
+	PVCRefCounts map[string]int
+	// node "keti-gpu-metric-collector" ip
+	MetricCollectorIP string
+	// nodemetric from "keti-gpu-metric-collector"
+	NodeMetric *NodeMetric
+	// gpumetric from "keti-gpu-metric-collector"
+	GPUMetrics map[string]*GPUMetric
+	// node with gpu
+	IsGPUNode bool
+	// scheduling plugin result
+	PluginResult *PluginResult
+	// Total requested resources of all pods on this node. This includes assumed
+	// pods, which scheduler has sent for binding, but may not be scheduled yet.
+	Requested *Resource
+	// We store allocatedResources (which is Node.Status.Allocatable.*) explicitly
+	// as int64, to avoid conversions and accessing map.
+	Allocatable *Resource
+	// node reserved flag
+	Reserved bool
+	// ReservePodList sets.String // ??
 	// Avaliable                    bool // PluginResult.IsFiltered로 판별가능 -> Metric Collector가 있는지 여부로 초기화시 결정
 }
 
@@ -572,7 +627,7 @@ func NewNodeInfo() *NodeInfo {
 		PluginResult:                 NewPluginResult(),
 		Requested:                    &Resource{},
 		Allocatable:                  &Resource{},
-		ReservePodList:               sets.NewString(),
+		// ReservePodList:               sets.NewString(),
 		// Avaliable:                    false,
 		// TotalGPUCount:                0,
 		// NonZeroRequested:             &Resource{},
@@ -761,11 +816,12 @@ func (gm *GPUMetric) gpuPodCountUp() {
 
 // Resource is a collection of compute resource.
 type Resource struct {
-	MilliCPU         int64
-	Memory           int64
-	EphemeralStorage int64
-	AllowedPodNumber int
-	ScalarResources  map[v1.ResourceName]int64
+	MilliCPU         int64                     // node cpu
+	Memory           int64                     // node memory
+	EphemeralStorage int64                     // node storage
+	AllowedPodNumber int                       // node allowed pod number
+	PodCount         int                       // node running pod number
+	ScalarResources  map[v1.ResourceName]int64 // custom resources
 }
 
 type PodResource struct {
@@ -1162,64 +1218,20 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 	}
 }
 
-type Code int
-
-const (
-	Wait                         Code = iota //pending
-	Error                                    //error
-	Unschedulable                            //need rescheduling or wait
-	UnschedulableAndUnresolvable             //cannot scheduling
-)
-
-type Desc [2]string
+// type Desc [2]string
 
 type Status struct {
-	Code           Code            //파드 스케줄링 상태
-	Reasons        string          //이유
-	Err            error           //에러내용
-	FilteredPlugin map[string]Desc //filter plugin 노드네임-단계-이유
+	Code    Code   //파드 스케줄링 상태
+	Reasons string //이유
+	Err     error  //에러내용
+	// FilteredPlugin map[string]Desc //filter plugin) key: 노드네임 - value: [0]단계, [1]이유
 }
 
 func NewStatus() *Status {
 	return &Status{
-		Code:           Wait,
-		Reasons:        "",
-		Err:            nil,
-		FilteredPlugin: make(map[string]Desc),
+		Code:    Wait,
+		Reasons: "",
+		Err:     nil,
+		// FilteredPlugin: make(map[string]Desc),
 	}
 }
-
-// // GetPodFullName returns a name that uniquely identifies a pod.
-// func GetPodFullName(pod *v1.Pod) string {
-// 	// Use underscore as the delimiter because it is not allowed in pod name
-// 	// (DNS subdomain format).
-// 	return pod.Name + "_" + pod.Namespace
-// }
-
-// // GetPodStartTime returns start time of the given pod or current timestamp
-// // if it hasn't started yet.
-// func GetPodStartTime(pod *v1.Pod) *metav1.Time {
-// 	if pod.Status.StartTime != nil {
-// 		return pod.Status.StartTime
-// 	}
-// 	// Assumed pods and bound pods that haven't started don't have a StartTime yet.
-// 	return &metav1.Time{Time: time.Now()}
-// }
-
-// // MoreImportantPod return true when priority of the first pod is higher than
-// // the second one. If two pods' priorities are equal, compare their StartTime.
-// // It takes arguments of the type "interface{}" to be used with SortableList,
-// // but expects those arguments to be *v1.Pod.
-// func MoreImportantPod(pod1, pod2 *v1.Pod) bool {
-// 	p1 := corev1helpers.PodPriority(pod1)
-// 	p2 := corev1helpers.PodPriority(pod2)
-// 	if p1 != p2 {
-// 		return p1 > p2
-// 	}
-// 	return GetPodStartTime(pod1).Before(GetPodStartTime(pod2))
-// }
-
-// // DeletePod deletes the given <pod> from API server
-// func DeletePod(cs kubernetes.Interface, pod *v1.Pod) error {
-// 	return cs.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-// }
