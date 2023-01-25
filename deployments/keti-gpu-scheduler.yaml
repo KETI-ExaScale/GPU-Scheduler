@@ -59,7 +59,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v0.276
+          image: ketidevit2/keti-gpu-scheduler:v0.278
           # args:
           #   - --debugging=on
           volumeMounts:

@@ -58,7 +58,7 @@ func NewPriorityQueue() *PriorityQueue {
 }
 
 func (p *PriorityQueue) Run() {
-	go wait.Until(p.flushBackoffQCompleted, 5*time.Second, p.stop) //backoffQ >> activeQ flush routine
+	go wait.Until(p.flushBackoffQCompleted, 3*time.Second, p.stop) //backoffQ >> activeQ flush routine
 	// go wait.Until(p.flushUnschedulablePodsLeftover, 30*time.Second, p.stop)
 }
 
@@ -119,7 +119,7 @@ func (p *PriorityQueue) Pop() (*QueuedPodInfo, error) {
 	return pInfo, nil
 }
 
-func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(flag bool) error {
+func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(flushAllPods bool) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	broadcast := false
@@ -128,17 +128,29 @@ func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(flag bool) error {
 		if rawPodInfo == nil {
 			break
 		}
-		qp := rawPodInfo.(*QueuedPodInfo)
 
+		qp := rawPodInfo.(*QueuedPodInfo)
 		_, err := p.BackoffQ.Pop()
 		if err != nil {
 			KETI_LOG_L3(fmt.Sprintf("Unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
 		}
-		qp.Timestamp = time.Now()
-		qp.PriorityScore = qp.UserPriority + qp.Attempts*10
-		p.activeQ.Add(rawPodInfo)
-		broadcast = true
+
+		if flushAllPods { // flush all pods
+			qp.Timestamp = time.Now()
+			qp.PriorityScore = qp.UserPriority + qp.Attempts*10
+			p.activeQ.Add(rawPodInfo)
+			broadcast = true
+		} else { // flush only unschedulable pods
+			if qp.Status.Code == Unschedulable {
+				qp.Timestamp = time.Now()
+				qp.PriorityScore = qp.UserPriority + qp.Attempts*10
+				p.activeQ.Add(rawPodInfo)
+				broadcast = true
+			} else {
+				continue
+			}
+		}
 	}
 
 	if broadcast {
@@ -178,27 +190,24 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 		} else if qp.Status.Code == Error {
 			boTime = qp.Timestamp.Add(ErrorDuration)
 		} else {
-			KETI_LOG_L3(fmt.Sprintf("QueuePodInfo unknown status :%s {%s}", qp.Status.Code, qp.Pod.Name))
+			KETI_LOG_L3(fmt.Sprintf("QueuePodInfo unknown status :%d {%s}", qp.Status.Code, qp.Pod.Name))
 		}
 
-		if !boTime.After(time.Now()) {
-			fmt.Println("!boTime.After(time.Now())")
+		if !boTime.Before(time.Now()) {
 			break
-		} else {
-			fmt.Println("boTime.After(time.Now())")
 		}
 
 		_, err := p.BackoffQ.Pop()
 		if err != nil {
-			KETI_LOG_L3(fmt.Sprintf("Unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
+			KETI_LOG_L3(fmt.Sprintf("Unable to pop from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
 		}
+
 		qp.Timestamp = time.Now()
 		qp.PriorityScore = qp.UserPriority + qp.Attempts*10
+		qp.Status.Code = Wait
 		p.activeQ.Add(rawPodInfo)
 		broadcast = true
-
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if broadcast {
@@ -316,7 +325,7 @@ func podsCompareBackoffCompleted(podInfo1, podInfo2 interface{}) bool {
 	pInfo2 := podInfo2.(*QueuedPodInfo)
 	bo1 := pInfo1.Timestamp
 	bo2 := pInfo2.Timestamp
-	return bo1.Before(bo2)
+	return bo1.Before(bo2) //원래는 bo1.Before(bo2)
 }
 
 // func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *QueuedPodInfo) error {
@@ -345,7 +354,7 @@ func (p *PriorityQueue) PrintActiveQ() {
 	items := p.activeQ.List()
 	KETI_LOG_L1("<test> active queue\n")
 	for i := 0; i < len(items); i++ {
-		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, reschedule: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
+		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, attempt: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
 	}
 }
 
@@ -353,7 +362,7 @@ func (p *PriorityQueue) PrintBackoffQ() {
 	items := p.BackoffQ.List()
 	KETI_LOG_L1("<test> backoff queue\n")
 	for i := 0; i < len(items); i++ {
-		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, reschedule: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
+		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, attempt: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
 	}
 }
 

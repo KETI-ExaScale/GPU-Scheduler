@@ -14,7 +14,7 @@ spec:
         app: nginx
       name: nginx
     spec:
-      schedulerName: gpu-scheduler
+      schedulerName: keti-gpu-scheduler
       containers:
         - name: nginx
           image: "nginx:1.11.1-alpine"

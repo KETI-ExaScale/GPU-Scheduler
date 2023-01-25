@@ -7,8 +7,9 @@ spec:
   template:
     metadata:
       annotations:
-        clusterName: keti-gpu-cluster1
-        priority: H
+        # clusterName: keti-gpu-cluster1
+        priority: I
+        # clusterScheduling: "false"
     spec:
       hostIPC: true
       schedulerName: gpu-scheduler

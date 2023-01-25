@@ -27,9 +27,10 @@ func (pl CheckNodeUnschedulable) Filter(nodeInfoCache *r.NodeCache, newPod *r.Qu
 			})
 
 			if nodeinfo.Node().Spec.Unschedulable && !podToleratesUnschedulable {
-				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
+				reason := fmt.Sprintf("node unschedulable and pod not tolerates unschedulable")
+				filterState := r.FilterStatus{r.UnschedulableAndUnresolvable, pl.Name(), reason, nil}
+				nodeinfo.PluginResult.FilterNode(nodeName, filterState)
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(nodeName, pl.Name(), fmt.Sprintf(""))
 			}
 		}
 	}

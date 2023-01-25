@@ -1,6 +1,7 @@
-registry="ketidevit2"
-imagename="keti-gpu-scheduler"
-version="v0.276"
+registry="ketidevit3"
+imagename="Exascale-keti-gpu-scheduler"
+version="v0.1"
+#version="v0.278"
 
 #latest golang
 #export PATH=$PATH:/usr/local/go/bin && \

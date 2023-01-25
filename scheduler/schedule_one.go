@@ -114,9 +114,6 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 
 	r.KETI_LOG_L3("\n-----:: Pod Scheduling Start ::-----")
 	r.KETI_LOG_L2(fmt.Sprintf("- POD NAME {%s}", sched.NewPod.Pod.Name))
-	fmt.Println("<test> ", sched.NewPod.Attempts, sched.NewPod.PriorityScore)
-	sched.SchedulingQueue.AddBackoffQ(sched.NewPod)
-	return
 	r.KETI_LOG_L1(fmt.Sprintf("<test> pod request resource: %+v", sched.NewPod.RequestedResource))
 
 	flag := sched.checkScheduleType()

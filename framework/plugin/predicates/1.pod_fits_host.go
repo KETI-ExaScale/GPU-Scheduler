@@ -3,6 +3,8 @@ package predicates
 import (
 	"fmt"
 	r "gpu-scheduler/resourceinfo"
+
+	v1 "k8s.io/api/core/v1"
 )
 
 type PodFitsHost struct{}
@@ -22,11 +24,17 @@ func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			if newPod.Pod.Spec.NodeName != nodeName {
-				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
+			if !Fits(newPod.Pod, nodeName) {
+				reason := fmt.Sprintf("node name=%s not fit pod.spec.nodeName=%s", nodeName, newPod.Pod.Spec.NodeName)
+				filterState := r.FilterStatus{r.UnschedulableAndUnresolvable, pl.Name(), reason, nil}
+				nodeinfo.PluginResult.FilterNode(nodeName, filterState)
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(nodeName, pl.Name(), "not match host name")
 			}
 		}
 	}
+}
+
+// Fits actually checks if the pod fits the node.
+func Fits(pod *v1.Pod, nodeName string) bool {
+	return len(pod.Spec.NodeName) == 0 || pod.Spec.NodeName == nodeName
 }

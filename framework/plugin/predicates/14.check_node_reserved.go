@@ -16,12 +16,10 @@ func (pl CheckNodeReserved) Debugg() {
 }
 
 func (pl CheckNodeReserved) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			if nodeinfo.Node().Annotations["reserved"] != "" {
-				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
-				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(nodeName, pl.Name(), "")
+			if nodeinfo.Reserved {
+				//filter
 			}
 		}
 	}

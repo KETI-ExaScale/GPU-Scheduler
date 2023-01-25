@@ -27,9 +27,10 @@ func (pl PodFitsHostPorts) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPo
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if !fitsPorts(wantPorts, nodeinfo) {
-				nodeinfo.PluginResult.FilterNode(nodeName, pl.Name())
+				reason := fmt.Sprintf("cannot use pod requested port : %v")
+				filterState := r.FilterStatus{r.UnschedulableAndUnresolvable, pl.Name(), reason, nil}
+				nodeinfo.PluginResult.FilterNode(nodeName, filterState)
 				nodeInfoCache.NodeCountDown()
-				newPod.FilterNode(nodeName, pl.Name(), "")
 			}
 		}
 	}
