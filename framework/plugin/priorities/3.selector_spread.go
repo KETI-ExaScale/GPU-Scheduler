@@ -15,14 +15,22 @@ package priorities
 
 import (
 	"fmt"
+	"log"
+	"math"
 
 	r "gpu-scheduler/resourceinfo"
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
+	utilnode "k8s.io/component-helpers/node/topology"
 )
 
 type SelectorSpread struct {
@@ -32,11 +40,38 @@ type SelectorSpread struct {
 	statefulSets           appslisters.StatefulSetLister
 }
 
+const (
+	// When zone information is present, give 2/3 of the weighting to zone spreading, 1/3 to node spreading
+	// TODO: Any way to justify this weighting?
+	zoneWeighting float64 = 2.0 / 3.0
+)
+
 var (
 	rcKind = v1.SchemeGroupVersion.WithKind("ReplicationController")
 	rsKind = appsv1.SchemeGroupVersion.WithKind("ReplicaSet")
 	ssKind = appsv1.SchemeGroupVersion.WithKind("StatefulSet")
 )
+
+func SelectorSpread_() SelectorSpread {
+	hostConfig, err := rest.InClusterConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
+	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
+
+	services := informerFactory.Core().V1().Services().Lister()
+	replicationCtrls := informerFactory.Core().V1().ReplicationControllers().Lister()
+	replicaSets := informerFactory.Apps().V1().ReplicaSets().Lister()
+	statefulSets := informerFactory.Apps().V1().StatefulSets().Lister()
+
+	return SelectorSpread{
+		services:               services,
+		replicationControllers: replicationCtrls,
+		replicaSets:            replicaSets,
+		statefulSets:           statefulSets,
+	}
+}
 
 func (pl SelectorSpread) Name() string {
 	return "SelectorSpread"
@@ -52,27 +87,28 @@ func (pl SelectorSpread) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl SelectorSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	// if skipSelectorSpread(newPod.Pod) {
-	// 	return
-	// }
-	// selector := DefaultSelector(
-	// 	newPod.Pod,
-	// 	pl.services,
-	// 	pl.replicationControllers,
-	// 	pl.replicaSets,
-	// 	pl.statefulSets,
-	// )
-	// state := &preScoreState3{
-	// 	selector: selector,
-	// }
+	if skipSelectorSpread(newPod.Pod) {
+		return
+	}
 
-	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeinfo.PluginResult.IsFiltered {
-	// 		count := countMatchingPods(newPod.Pod.Namespace, state.selector, nodeinfo)
-	//		fmt.Println("scoring>selector_spread: ", count, "scode, node: ", nodeinfo.Node().Name)
-	// 		nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count)))
-	// 	}
-	// }
+	//PreScore
+	selector := DefaultSelector(
+		newPod.Pod,
+		pl.services,
+		pl.replicationControllers,
+		pl.replicaSets,
+		pl.statefulSets,
+	)
+
+	//Score
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			count := countMatchingPods(newPod.Pod.Namespace, selector, nodeinfo)
+			// fmt.Println("scoring>selector_spread: ", count, "scode, node: ", nodeinfo.Node().Name)
+			score := pl.NormalizeScore(count, nodeinfo)
+			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score)))
+		}
+	}
 }
 
 func skipSelectorSpread(pod *v1.Pod) bool {
@@ -101,7 +137,8 @@ func GetPodServices(sl corelisters.ServiceLister, pod *v1.Pod) ([]*v1.Service, e
 	return services, nil
 }
 
-func countMatchingPods(namespace string, selector labels.Selector, nodeInfo *r.NodeInfo) int {
+// countMatchingPods counts pods based on namespace and matching all selectors
+func countMatchingPods(namespace string, selector labels.Selector, nodeInfo *r.NodeInfo) int64 {
 	if len(nodeInfo.Pods) == 0 || selector.Empty() {
 		return 0
 	}
@@ -115,5 +152,111 @@ func countMatchingPods(namespace string, selector labels.Selector, nodeInfo *r.N
 			}
 		}
 	}
-	return count
+	return int64(count)
+}
+
+func DefaultSelector(
+	pod *v1.Pod,
+	sl corelisters.ServiceLister,
+	cl corelisters.ReplicationControllerLister,
+	rsl appslisters.ReplicaSetLister,
+	ssl appslisters.StatefulSetLister,
+) labels.Selector {
+	labelSet := make(labels.Set)
+	// Since services, RCs, RSs and SSs match the pod, they won't have conflicting
+	// labels. Merging is safe.
+
+	if services, err := GetPodServices(sl, pod); err == nil {
+		for _, service := range services {
+			labelSet = labels.Merge(labelSet, service.Spec.Selector)
+		}
+	}
+	selector := labelSet.AsSelector()
+
+	owner := metav1.GetControllerOfNoCopy(pod)
+	if owner == nil {
+		return selector
+	}
+
+	gv, err := schema.ParseGroupVersion(owner.APIVersion)
+	if err != nil {
+		return selector
+	}
+
+	gvk := gv.WithKind(owner.Kind)
+	switch gvk {
+	case rcKind:
+		if rc, err := cl.ReplicationControllers(pod.Namespace).Get(owner.Name); err == nil {
+			labelSet = labels.Merge(labelSet, rc.Spec.Selector)
+			selector = labelSet.AsSelector()
+		}
+	case rsKind:
+		if rs, err := rsl.ReplicaSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	case ssKind:
+		if ss, err := ssl.StatefulSets(pod.Namespace).Get(owner.Name); err == nil {
+			if other, err := metav1.LabelSelectorAsSelector(ss.Spec.Selector); err == nil {
+				if r, ok := other.Requirements(); ok {
+					selector = selector.Add(r...)
+				}
+			}
+		}
+	default:
+		// Not owned by a supported controller.
+	}
+
+	return selector
+}
+
+func (pl *SelectorSpread) NormalizeScore(score int64, nodeInfo *r.NodeInfo) int64 {
+	countsByZone := make(map[string]int64, 10)
+	maxCountByZone := int64(0)
+	maxCountByNodeName := int64(0)
+
+	if score > maxCountByNodeName {
+		maxCountByNodeName = score
+	}
+
+	zoneID := utilnode.GetZoneKey(nodeInfo.Node())
+	if zoneID == "" {
+	} else {
+		countsByZone[zoneID] += score
+	}
+
+	for zoneID := range countsByZone {
+		if countsByZone[zoneID] > maxCountByZone {
+			maxCountByZone = countsByZone[zoneID]
+		}
+	}
+
+	haveZones := len(countsByZone) != 0
+
+	maxCountByNodeNameFloat64 := float64(maxCountByNodeName)
+	maxCountByZoneFloat64 := float64(maxCountByZone)
+	MaxNodeScoreFloat64 := float64(r.MaxScore)
+
+	// initializing to the default/max node score of maxPriority
+	fScore := MaxNodeScoreFloat64
+	if maxCountByNodeName > 0 {
+		fScore = MaxNodeScoreFloat64 * (float64(maxCountByNodeName-score) / maxCountByNodeNameFloat64)
+	}
+	// If there is zone information present, incorporate it
+	if haveZones {
+		zoneID := utilnode.GetZoneKey(nodeInfo.Node())
+		if zoneID != "" {
+			zoneScore := MaxNodeScoreFloat64
+			if maxCountByZone > 0 {
+				zoneScore = MaxNodeScoreFloat64 * (float64(maxCountByZone-countsByZone[zoneID]) / maxCountByZoneFloat64)
+			}
+			fScore = (fScore * (1.0 - zoneWeighting)) + (zoneWeighting * zoneScore)
+		}
+	}
+	score = int64(fScore)
+
+	return score
 }

@@ -20,6 +20,7 @@ import (
 	r "gpu-scheduler/resourceinfo"
 
 	v1 "k8s.io/api/core/v1"
+	v1helper "k8s.io/component-helpers/scheduling/corev1"
 )
 
 type TaintToleration struct{}
@@ -38,16 +39,16 @@ func (pl TaintToleration) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
-	state := &preScoreState2{
-		tolerationsPreferNoSchedule: tolerationsPreferNoSchedule,
-	}
 
+	//PreScore
+	tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(newPod.Pod.Spec.Tolerations)
+
+	//Score
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			score := int64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, state.tolerationsPreferNoSchedule))
+			score := int64(countIntolerableTaintsPreferNoSchedule(nodeinfo.Node().Spec.Taints, tolerationsPreferNoSchedule)) //intolerable한 개수
 			// fmt.Println("scoring>taint_toleration: ", score, "scode, node: ", nodeinfo.Node().Name)
-			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(score)))
+			nodeinfo.PluginResult.NodeScore -= int(math.Round(float64(score)))
 		}
 	}
 }
@@ -64,25 +65,16 @@ func getAllTolerationPreferNoSchedule(tolerations []v1.Toleration) (tolerationLi
 
 func countIntolerableTaintsPreferNoSchedule(taints []v1.Taint, tolerations []v1.Toleration) (intolerableTaints int) {
 	for _, taint := range taints {
-		// check only on taints that have effect PreferNoSchedule
+		// check only on taints that have effect PreferNoSchedule = 'soft' restriction
 		if taint.Effect != v1.TaintEffectPreferNoSchedule {
 			continue
 		}
 
-		if !tolerationsTolerateTaint(tolerations, &taint) {
+		if !v1helper.TolerationsTolerateTaint(tolerations, &taint) {
 			intolerableTaints++
 		}
 	}
 	return
-}
-
-func tolerationsTolerateTaint(tolerations []v1.Toleration, taint *v1.Taint) bool {
-	for i := range tolerations {
-		if tolerations[i].ToleratesTaint(taint) {
-			return true
-		}
-	}
-	return false
 }
 
 // func (pl TaintToleration) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

@@ -35,6 +35,14 @@ type InterPodAffinityArgs struct {
 	HardPodAffinityWeight int32
 }
 
+type ipaPreScoreState struct {
+	topologyScore scoreMap
+	podInfo       *r.PodInfo
+	// A copy of the incoming pod's namespace labels.
+	namespaceLabels labels.Set
+}
+type scoreMap map[string]map[string]int64
+
 func (pl InterPodAffinity) Name() string {
 	return "InterPodAffinity"
 }
@@ -48,12 +56,19 @@ func (pl InterPodAffinity) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-func (pl *InterPodAffinity) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*preScoreState4, error) {
+func (pl *InterPodAffinity) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*ipaPreScoreState, error) {
 	affinity := newPod.Pod.Spec.Affinity
 	hasPreferredAffinityConstraints := affinity != nil && affinity.PodAffinity != nil && len(affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
 	hasPreferredAntiAffinityConstraints := affinity != nil && affinity.PodAntiAffinity != nil && len(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
 
-	state := &preScoreState4{
+	var onlyAffinityNode bool
+	if hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints {
+		onlyAffinityNode = false
+	} else {
+		onlyAffinityNode = true
+	}
+
+	state := &ipaPreScoreState{
 		topologyScore: make(map[string]map[string]int64),
 	}
 
@@ -75,6 +90,9 @@ func (pl *InterPodAffinity) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo
 	index := int32(-1)
 	for _, nodeinfo := range cache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
+			if onlyAffinityNode && len(nodeinfo.PodsWithAffinity) == 0 && len(nodeinfo.PodsWithAffinity) == 0 {
+				continue
+			}
 			podsToProcess := nodeinfo.PodsWithAffinity
 			if hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints {
 				podsToProcess = nodeinfo.Pods
@@ -98,25 +116,27 @@ func (pl *InterPodAffinity) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo
 }
 
 func (pl InterPodAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	// state, err := pl.PreScore(nodeInfoCache, newPod)
-	// if err != nil {
-	// 	fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
-	// 	return
-	// }
 
-	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeinfo.PluginResult.IsFiltered {
-	// 		var score int64
-	// 		for tpKey, tpValues := range state.topologyScore {
-	// 			if v, exist := nodeinfo.Node().Labels[tpKey]; exist {
-	// 				score += tpValues[v]
-	// 			}
-	// 		}
-	//		fmt.Println("scoring>inter_pod_affinity: ", score, "scode, node: ", nodeinfo.Node().Name)
-	// 		nodeinfo.PluginResult.NodeScore += int(float64(score))
-	// 	}
-	// }
+	//PreScore
+	state, err := pl.PreScore(nodeInfoCache, newPod)
+	if err != nil {
+		fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
+		return
+	}
 
+	//Score
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			var score int64
+			for tpKey, tpValues := range state.topologyScore {
+				if v, exist := nodeinfo.Node().Labels[tpKey]; exist {
+					score += tpValues[v]
+				}
+			}
+			fmt.Println("scoring>inter_pod_affinity: ", score, "scode, node: ", nodeinfo.Node().Name)
+			nodeinfo.PluginResult.NodeScore += int(float64(score)) //inter pod affinity값 더함
+		}
+	}
 }
 
 func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *r.AffinityTerm) error {
@@ -144,7 +164,7 @@ func GetNamespaceLabelsSnapshot(ns string, nsLister listersv1.NamespaceLister) (
 }
 
 func (pl *InterPodAffinity) processExistingPod(
-	state *preScoreState4,
+	state *ipaPreScoreState,
 	existingPod *r.PodInfo,
 	existingPodNodeInfo *r.NodeInfo,
 	incomingPod *v1.Pod,

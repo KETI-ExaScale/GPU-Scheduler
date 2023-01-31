@@ -15,6 +15,7 @@ package priorities
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sync/atomic"
 
@@ -24,19 +25,61 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 )
 
 type PodTopologySpread struct {
-	systemDefaulted                     bool
-	defaultConstraints                  []v1.TopologySpreadConstraint
-	services                            corelisters.ServiceLister
-	replicationCtrls                    corelisters.ReplicationControllerLister
-	replicaSets                         appslisters.ReplicaSetLister
-	statefulSets                        appslisters.StatefulSetLister
-	enableMinDomainsInPodTopologySpread bool
+	systemDefaulted    bool
+	defaultConstraints []v1.TopologySpreadConstraint
+	services           corelisters.ServiceLister
+	replicationCtrls   corelisters.ReplicationControllerLister
+	replicaSets        appslisters.ReplicaSetLister
+	statefulSets       appslisters.StatefulSetLister
+}
+
+type ptsPreScoreState struct {
+	Constraints               []topologySpreadConstraint
+	IgnoredNodes              sets.String
+	TopologyPairToPodCounts   map[topologyPair]*int64
+	TopologyNormalizingWeight []float64
+}
+type topologySpreadConstraint struct {
+	MaxSkew     int32
+	TopologyKey string
+	Selector    labels.Selector
+	MinDomains  int32
+}
+type topologyPair struct {
+	key   string
+	value string
+}
+
+func PodTopologySpread_() PodTopologySpread {
+	hostConfig, err := rest.InClusterConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	hostKubeClient := kubernetes.NewForConfigOrDie(hostConfig)
+	informerFactory := informers.NewSharedInformerFactory(hostKubeClient, 0)
+
+	services := informerFactory.Core().V1().Services().Lister()
+	replicationCtrls := informerFactory.Core().V1().ReplicationControllers().Lister()
+	replicaSets := informerFactory.Apps().V1().ReplicaSets().Lister()
+	statefulSets := informerFactory.Apps().V1().StatefulSets().Lister()
+
+	return PodTopologySpread{
+		systemDefaulted:    r,
+		defaultConstraints: r,
+		services:           services,
+		replicationCtrls:   replicationCtrls,
+		replicaSets:        replicaSets,
+		statefulSets:       statefulSets,
+	}
 }
 
 func (pl PodTopologySpread) Name() string {
@@ -52,10 +95,11 @@ func (pl PodTopologySpread) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-func (pl *PodTopologySpread) initPreScoreState(s *preScoreState5, pod *v1.Pod, cache *r.NodeCache, requireAllTopologies bool) error {
+func (pl *PodTopologySpread) initPreScoreState(s *ptsPreScoreState, pod *v1.Pod, cache *r.NodeCache, requireAllTopologies bool) error {
 	var err error
+
 	if len(pod.Spec.TopologySpreadConstraints) > 0 {
-		s.Constraints, err = filterTopologySpreadConstraints(pod.Spec.TopologySpreadConstraints, v1.ScheduleAnyway, pl.enableMinDomainsInPodTopologySpread)
+		s.Constraints, err = filterTopologySpreadConstraints(pod.Spec.TopologySpreadConstraints, v1.ScheduleAnyway)
 		if err != nil {
 			return fmt.Errorf("obtaining pod's soft topology spread constraints: %w", err)
 		}
@@ -65,6 +109,7 @@ func (pl *PodTopologySpread) initPreScoreState(s *preScoreState5, pod *v1.Pod, c
 			return fmt.Errorf("setting default soft topology spread constraints: %w", err)
 		}
 	}
+
 	if len(s.Constraints) == 0 {
 		return nil
 	}
@@ -102,8 +147,8 @@ func (pl *PodTopologySpread) initPreScoreState(s *preScoreState5, pod *v1.Pod, c
 	return nil
 }
 
-func (pl *PodTopologySpread) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*preScoreState5, error) {
-	state := &preScoreState5{
+func (pl *PodTopologySpread) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInfo) (*ptsPreScoreState, error) {
+	state := &ptsPreScoreState{
 		IgnoredNodes:            sets.NewString(),
 		TopologyPairToPodCounts: make(map[topologyPair]*int64),
 	}
@@ -144,35 +189,35 @@ func (pl *PodTopologySpread) PreScore(cache *r.NodeCache, newPod *r.QueuedPodInf
 }
 
 func (pl PodTopologySpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-	// 	if !nodeinfo.PluginResult.IsFiltered {
-	// 		state, err := pl.PreScore(nodeInfoCache, newPod)
-	// 		if err != nil {
-	// 			fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
-	// 			return
-	// 		}
-	// 		if state.IgnoredNodes.Has(nodeinfo.Node().Name) {
-	// 			continue
-	// 		}
+	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+		if !nodeinfo.PluginResult.IsFiltered {
+			state, err := pl.PreScore(nodeInfoCache, newPod)
+			if err != nil {
+				fmt.Println("<error> InterPodAffinity PreScore Error - ", err)
+				return
+			}
+			if state.IgnoredNodes.Has(nodeinfo.Node().Name) {
+				continue //스코어 점수 없음 (최하점)
+			}
 
-	// 		var score float64
-	// 		for i, c := range state.Constraints {
-	// 			if tpVal, ok := nodeinfo.Node().Labels[c.TopologyKey]; ok {
-	// 				var cnt int64
-	// 				if c.TopologyKey == v1.LabelHostname {
-	// 					cnt = int64(countPodsMatchSelector(nodeinfo.Pods, c.Selector, newPod.Pod.Namespace))
-	// 				} else {
-	// 					pair := topologyPair{key: c.TopologyKey, value: tpVal}
-	// 					cnt = *state.TopologyPairToPodCounts[pair]
-	// 				}
-	// 				score += scoreForCount(cnt, c.MaxSkew, state.TopologyNormalizingWeight[i])
-	// 			}
-	// 		}
-	// 		score = math.Round(score)
-	//		fmt.Println("scoring>pod_topology_spread: ", score, "scode, node: ", nodeinfo.Node().Name)
-	// 		nodeinfo.PluginResult.NodeScore += int(score)
-	// 	}
-	// }
+			var score float64
+			for i, c := range state.Constraints {
+				if tpVal, ok := nodeinfo.Node().Labels[c.TopologyKey]; ok {
+					var cnt int64
+					if c.TopologyKey == v1.LabelHostname {
+						cnt = int64(countPodsMatchSelector(nodeinfo.Pods, c.Selector, newPod.Pod.Namespace))
+					} else {
+						pair := topologyPair{key: c.TopologyKey, value: tpVal}
+						cnt = *state.TopologyPairToPodCounts[pair]
+					}
+					score += scoreForCount(cnt, c.MaxSkew, state.TopologyNormalizingWeight[i])
+				}
+			}
+			score = math.Round(score)
+			fmt.Println("scoring>pod_topology_spread: ", score, "scode, node: ", nodeinfo.Node().Name)
+			nodeinfo.PluginResult.NodeScore += int(score)
+		}
+	}
 }
 
 func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
@@ -207,7 +252,7 @@ func topologyNormalizingWeight(size int) float64 {
 }
 
 func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
-	constraints, err := filterTopologySpreadConstraints(pl.defaultConstraints, action, pl.enableMinDomainsInPodTopologySpread)
+	constraints, err := filterTopologySpreadConstraints(pl.defaultConstraints, action)
 	if err != nil || len(constraints) == 0 {
 		return nil, err
 	}
@@ -221,7 +266,7 @@ func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.Unsati
 	return constraints, nil
 }
 
-func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, action v1.UnsatisfiableConstraintAction, enableMinDomainsInPodTopologySpread bool) ([]topologySpreadConstraint, error) {
+func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
 	var result []topologySpreadConstraint
 	for _, c := range constraints {
 		if c.WhenUnsatisfiable == action {
@@ -229,16 +274,11 @@ func filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, 
 			if err != nil {
 				return nil, err
 			}
-			tsc := topologySpreadConstraint{
+			result = append(result, topologySpreadConstraint{
 				MaxSkew:     c.MaxSkew,
 				TopologyKey: c.TopologyKey,
 				Selector:    selector,
-				MinDomains:  1, // if MinDomains is nil, we treat MinDomains as 1.
-			}
-			if enableMinDomainsInPodTopologySpread && c.MinDomains != nil {
-				tsc.MinDomains = *c.MinDomains
-			}
-			result = append(result, tsc)
+			})
 		}
 	}
 	return result, nil

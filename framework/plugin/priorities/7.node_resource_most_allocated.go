@@ -20,13 +20,13 @@ import (
 	r "gpu-scheduler/resourceinfo"
 )
 
-type NodeResourcesFit struct{}
+type NodeResourcesMostAllocated struct{}
 
-func (pl NodeResourcesFit) Name() string {
-	return "NodeResourcesFit"
+func (pl NodeResourcesMostAllocated) Name() string {
+	return "NodeResourcesLestAllocated"
 }
 
-func (pl NodeResourcesFit) Debugg(nodeInfoCache *r.NodeCache) {
+func (pl NodeResourcesMostAllocated) Debugg(nodeInfoCache *r.NodeCache) {
 	r.KETI_LOG_L2(fmt.Sprintf("S#7. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
@@ -35,7 +35,7 @@ func (pl NodeResourcesFit) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-func (pl NodeResourcesFit) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+func (pl NodeResourcesMostAllocated) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {

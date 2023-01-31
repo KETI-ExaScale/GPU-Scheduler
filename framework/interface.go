@@ -1,6 +1,7 @@
 package framework
 
 import (
+	"fmt"
 	"gpu-scheduler/framework/plugin/predicates"
 	"gpu-scheduler/framework/plugin/priorities"
 	r "gpu-scheduler/resourceinfo"
@@ -14,6 +15,7 @@ type GPUSchedulerInterface interface {
 }
 
 func GPUPodSpreadFramework() GPUSchedulerInterface {
+	fmt.Println("test printing framework called!!!!")
 	return &GPUSchedulerFramework{
 		Filtering: []FilterPlugin{
 			predicates.PodFitsHost{},
@@ -34,11 +36,11 @@ func GPUPodSpreadFramework() GPUSchedulerInterface {
 		Scoring: []ScorePlugin{
 			priorities.NodeAffinity{},
 			priorities.TaintToleration{},
-			priorities.SelectorSpread{},
+			priorities.SelectorSpread_(),
 			priorities.InterPodAffinity{},
-			priorities.PodTopologySpread{},
+			priorities.PodTopologySpread_(),
 			priorities.ImageLocality{},
-			priorities.NodeResourcesFit{},
+			priorities.NodeResourcesLestAllocated{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
 			priorities.NodeMetricAnalysis{},
@@ -81,7 +83,7 @@ func GPUPodBinpackFramework() GPUSchedulerInterface {
 			priorities.InterPodAffinity{},
 			priorities.PodTopologySpread{},
 			priorities.ImageLocality{},
-			priorities.NodeResourcesFit{},
+			priorities.NodeResourcesLestAllocated{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
 			priorities.NodeMetricAnalysis{},
@@ -124,7 +126,7 @@ func NonGPUPodFramework() GPUSchedulerInterface {
 			priorities.InterPodAffinity{},
 			priorities.PodTopologySpread{},
 			priorities.ImageLocality{},
-			priorities.NodeResourcesFit{},
+			priorities.NodeResourcesLestAllocated{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.VolumeBinding{},
 			priorities.NodeMetricAnalysis{},
@@ -136,7 +138,7 @@ func InitNodeScoreFramework() GPUSchedulerInterface {
 	return &GPUSchedulerFramework{
 		Filtering: []FilterPlugin{}, //only scoring
 		Scoring: []ScorePlugin{
-			priorities.NodeResourcesFit{},
+			priorities.NodeResourcesLestAllocated{},
 			priorities.BalancedNodeResourceAllocation{},
 			priorities.NodeMetricAnalysis{},
 			priorities.SetGPUFlopsScore{},

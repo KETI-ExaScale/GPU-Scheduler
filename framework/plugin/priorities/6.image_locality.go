@@ -44,12 +44,11 @@ func (pl ImageLocality) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl ImageLocality) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-
+	//Score
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			nodeScore := int(0)
-			nodeScore = int(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
-			nodeinfo.PluginResult.NodeScore += (nodeScore / 20)
+			score := int(calculatePriority(sumImageScores(nodeinfo, newPod.Pod.Spec.Containers, nodeInfoCache.AvailableNodeCount), len(newPod.Pod.Spec.Containers)))
+			nodeinfo.PluginResult.NodeScore += (score / 20)
 		}
 	}
 }

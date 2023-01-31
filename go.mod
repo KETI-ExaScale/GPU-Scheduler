@@ -1,18 +1,18 @@
 module gpu-scheduler
 
-go 1.17
+go 1.19
 
 require (
 	github.com/mitchellh/go-homedir v1.1.0
-	google.golang.org/grpc v1.52.0
+	google.golang.org/grpc v1.52.3
 	google.golang.org/protobuf v1.28.1
-	k8s.io/api v0.26.0
-	k8s.io/apimachinery v0.26.0
-	k8s.io/client-go v0.26.0
-	k8s.io/cloud-provider v0.26.0
-	k8s.io/component-helpers v0.26.0
-	k8s.io/klog/v2 v2.80.1
-	k8s.io/kubernetes v1.26.0
+	k8s.io/api v0.26.1
+	k8s.io/apimachinery v0.26.1
+	k8s.io/client-go v0.26.1
+	k8s.io/cloud-provider v0.26.1
+	k8s.io/component-helpers v0.26.1
+	k8s.io/klog/v2 v2.90.0
+	k8s.io/kubernetes v1.26.1
 )
 
 require (

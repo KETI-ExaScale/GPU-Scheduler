@@ -23,9 +23,9 @@ import (
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 )
 
-type NodeAffinity struct {
-	addedPrefSchedTerms *nodeaffinity.PreferredSchedulingTerms
-}
+type NodeAffinity struct{}
+
+//gpu-scheduelr not support AddedAffinity
 
 func (pl NodeAffinity) Name() string {
 	return "NodeAffinity"
@@ -47,21 +47,15 @@ func (pl NodeAffinity) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 	if err != nil {
 		return
 	}
-	state := &preScoreState1{
-		preferredNodeAffinity: preferredNodeAffinity,
-	}
 
 	//Score
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 
 			var count int64
-			if pl.addedPrefSchedTerms != nil {
-				count += pl.addedPrefSchedTerms.Score(nodeinfo.Node())
-			}
 
-			if state.preferredNodeAffinity != nil {
-				count += state.preferredNodeAffinity.Score(nodeinfo.Node())
+			if preferredNodeAffinity != nil {
+				count += preferredNodeAffinity.Score(nodeinfo.Node()) //affinity weight를 다 더한 값
 			}
 			nodeinfo.PluginResult.NodeScore += int(math.Round(float64(count)))
 		}
