@@ -15,19 +15,18 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 
 	r "gpu-scheduler/resourceinfo"
 )
 
-type AllocatedPodCountInGPUBinpack struct{}
+type GPUMemoryUsageSpread struct{}
 
-func (pl AllocatedPodCountInGPUBinpack) Name() string {
-	return "AllocatedPodCountInGPUBinpack"
+func (pl GPUMemoryUsageSpread) Name() string {
+	return "GPUMemoryUsage"
 }
 
-func (pl AllocatedPodCountInGPUBinpack) Debugg(nodeInfoCache *r.NodeCache) {
-	r.KETI_LOG_L2(fmt.Sprintf("S#12. %s", pl.Name()))
+func (pl GPUMemoryUsageSpread) Debugg(nodeInfoCache *r.NodeCache) {
+	r.KETI_LOG_L2(fmt.Sprintf("S#14. %s", pl.Name()))
 	for nodeName, nodeInfo := range nodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			for _, gpu := range nodeInfo.PluginResult.GPUScores {
@@ -39,14 +38,15 @@ func (pl AllocatedPodCountInGPUBinpack) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
-func (pl AllocatedPodCountInGPUBinpack) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+func (pl GPUMemoryUsageSpread) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			for j, gpu := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore := float64(5 * gpu.PodCount)
-					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) + gpuScore
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(gpuScore, 0))
+					gpuScore := float64(gpu.GPUMemoryFree) / float64(gpu.GPUMemoryTotal)
+					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
 				}
 			}
 		}

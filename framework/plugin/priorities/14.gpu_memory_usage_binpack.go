@@ -39,9 +39,6 @@ func (pl GPUMemoryUsageBinpack) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl GPUMemoryUsageBinpack) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	// if newPod.RequestedResource.GPUMemoryLimit != 0 { //GPU Memory Limit이 있으면 메모리 확인할 필요 없음
-	// 	return
-	// }
 
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
@@ -49,7 +46,6 @@ func (pl GPUMemoryUsageBinpack) Score(nodeInfoCache *r.NodeCache, newPod *r.Queu
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
 					gpuScore := float64(r.MaxScore) * float64(gpu.GPUMemoryUsed) / float64(gpu.GPUMemoryTotal)
 					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) + gpuScore
-					// gpuScore = float64(gpu.GPUMemoryUsed) / float64(nodeInfoCache.GPUMemoryMostInCluster)
 					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
 				}
 			}

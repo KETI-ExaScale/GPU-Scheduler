@@ -796,9 +796,9 @@ func NewGPUMetric() *GPUMetric {
 		GPUFlops:            0,
 		GPUArch:             0,
 		GPUUtil:             0,
-		GPUMaxOperativeTemp: 93,
-		GPUSlowdownTemp:     95,
-		GPUShutdownTemp:     98,
+		GPUMaxOperativeTemp: 0,
+		GPUSlowdownTemp:     0,
+		GPUShutdownTemp:     0,
 	}
 }
 

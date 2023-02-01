@@ -15,7 +15,6 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 
 	r "gpu-scheduler/resourceinfo"
 )
@@ -46,13 +45,8 @@ func (pl GPUTemperature) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodIn
 			for j, gpu := range nodeinfo.GPUMetrics {
 				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
 					gpuTemp := gpu.GPUTemperature
-					if 61 < gpuTemp && gpuTemp < 85 {
-						nodeinfo.PluginResult.GPUScores[j].GPUScore -= 3
-					} else if 86 < gpuTemp && gpuTemp < 94 {
-						nodeinfo.PluginResult.GPUScores[j].GPUScore -= 8
-					} else if 95 < gpuTemp {
-						temp := float64(nodeinfo.PluginResult.GPUScores[j].GPUScore - 100)
-						nodeinfo.PluginResult.GPUScores[j].GPUScore = int(math.Max(temp, 0))
+					if gpuTemp > gpu.GPUMaxOperativeTemp {
+						nodeinfo.PluginResult.GPUScores[j].GPUScore = 0
 					}
 				}
 			}

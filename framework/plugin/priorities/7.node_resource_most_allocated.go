@@ -35,40 +35,31 @@ func (pl NodeResourcesMostAllocated) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
+// mostResourceScorer favors nodes with most requested resources.
+// It calculates the percentage of memory and CPU requested by pods scheduled on the node, and prioritizes
+// based on the maximum of the average of the fraction of requested to capacity.
+//
+// Details:
+// (cpu(MaxNodeScore * requested * cpuWeight / capacity) + memory(MaxNodeScore * requested * memoryWeight / capacity) + ...) / weightSum
 func (pl NodeResourcesMostAllocated) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			// allocatable := nodeinfo.Allocatable
+			allocatable := nodeinfo.Allocatable
 			requested := newPod.RequestedResource
 			nodeScore := float64(0)
 
-			// if (allocatable.MilliCPU == 0) || (allocatable.MilliCPU < requested.MilliCPU) {
-			// 	continue
-			// } else {
-			// 	nodeScore += float64(allocatable.MilliCPU-requested.MilliCPU) / float64(allocatable.MilliCPU) * 40
-			// }
-			// if (allocatable.Memory == 0) || (allocatable.Memory < requested.Memory) {
-			// 	continue
-			// } else {
-			// 	nodeScore += float64(allocatable.Memory-requested.Memory) / float64(allocatable.Memory) * 40
-			// }
-			// if (allocatable.EphemeralStorage == 0) || (allocatable.EphemeralStorage < requested.EphemeralStorage) {
-			// 	continue
-			// } else {
-			// 	nodeScore += float64(allocatable.EphemeralStorage-requested.EphemeralStorage) / float64(allocatable.EphemeralStorage) * 20
-			// }
-			// nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore * 0.3))
+			// milliCPUFree := nodeinfo.NodeMetric.MilliCPUTotal - nodeinfo.NodeMetric.MilliCPUUsed
+			// memoryFree := nodeinfo.NodeMetric.MemoryTotal - nodeinfo.NodeMetric.MemoryUsed
+			// storageFree := nodeinfo.NodeMetric.StorageTotal - nodeinfo.NodeMetric.StorageUsed
 
-			milliCPUFree := nodeinfo.NodeMetric.MilliCPUTotal - nodeinfo.NodeMetric.MilliCPUUsed
-			memoryFree := nodeinfo.NodeMetric.MemoryTotal - nodeinfo.NodeMetric.MemoryUsed
-			storageFree := nodeinfo.NodeMetric.StorageTotal - nodeinfo.NodeMetric.StorageUsed
+			milliCPUFree := allocatable.MilliCPU
+			memoryFree := allocatable.Memory
+			storageFree := allocatable.EphemeralStorage
+
 			nodeScore += float64(milliCPUFree-requested.MilliCPU) / float64(milliCPUFree) * 40
-			// fmt.Println("cpu: ", float64(milliCPUFree-requested.MilliCPU), float64(milliCPUFree), float64(milliCPUFree-requested.MilliCPU)/float64(milliCPUFree), float64(milliCPUFree-requested.MilliCPU)/float64(milliCPUFree)*40)
 			nodeScore += float64(memoryFree-requested.Memory) / float64(memoryFree) * 40
-			// fmt.Println("memory: ", float64(memoryFree-requested.Memory), float64(memoryFree), float64(memoryFree-requested.Memory)/float64(memoryFree), float64(memoryFree-requested.Memory)/float64(memoryFree)*40)
 			nodeScore += float64(storageFree-requested.EphemeralStorage) / float64(storageFree) * 20
-			// fmt.Println("storage: ", float64(storageFree-requested.EphemeralStorage), float64(storageFree), float64(storageFree-requested.EphemeralStorage)/float64(storageFree), float64(storageFree-requested.EphemeralStorage)/float64(storageFree)*20)
 
 			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore * 0.2))
 

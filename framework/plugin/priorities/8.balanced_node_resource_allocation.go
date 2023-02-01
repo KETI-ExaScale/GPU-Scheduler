@@ -38,37 +38,55 @@ func (pl BalancedNodeResourceAllocation) Debugg(nodeInfoCache *r.NodeCache) {
 func (pl BalancedNodeResourceAllocation) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
-			// allocable := nodeinfo.Allocatable
-			milliCPUFree := nodeinfo.NodeMetric.MilliCPUTotal - nodeinfo.NodeMetric.MilliCPUUsed
-			memoryFree := nodeinfo.NodeMetric.MemoryTotal - nodeinfo.NodeMetric.MemoryUsed
-			storageFree := nodeinfo.NodeMetric.StorageTotal - nodeinfo.NodeMetric.StorageUsed
+			var resourceToFractions []float64
+			var totalFraction float64
+
+			allocable := nodeinfo.Allocatable
 			requested := newPod.RequestedResource
-			nodeScore := float64(0)
-			std := float64(0)
 
-			// cpuFraction1 := math.Min(fractionOfCapacity(requested.MilliCPU, allocable.MilliCPU), 1)
-			// memoryFraction1 := math.Min(fractionOfCapacity(requested.Memory, allocable.Memory), 1)
-			// volumeFraction1 := math.Min(fractionOfCapacity(requested.EphemeralStorage, allocable.EphemeralStorage), 1)
+			fraction := float64(requested.MilliCPU) / float64(allocable.MilliCPU)
+			if fraction > 1 {
+				fraction = 1
+			}
+			totalFraction += fraction
+			resourceToFractions = append(resourceToFractions, fraction)
 
-			cpuFraction := math.Min(fractionOfCapacity(requested.MilliCPU, milliCPUFree), 1)
-			memoryFraction := math.Min(fractionOfCapacity(requested.Memory, memoryFree), 1)
-			storageFraction := math.Min(fractionOfCapacity(requested.EphemeralStorage, storageFree), 1)
-			mean := (cpuFraction + memoryFraction + storageFraction) / float64(3)
-			variance := float64((((cpuFraction - mean) * (cpuFraction - mean)) +
-				((memoryFraction - mean) * (memoryFraction - mean)) +
-				((storageFraction - mean) * (storageFraction - mean))) / float64(3))
-			std = math.Sqrt(variance / float64(3))
-			nodeScore = (float64(1) - std) * float64(r.MaxScore/20)
-			// fmt.Println(cpuFraction, memoryFraction, storageFraction, mean, variance, std, nodeScore)
-			nodeinfo.PluginResult.NodeScore += int(math.Round(nodeScore))
+			fraction = float64(requested.Memory) / float64(allocable.Memory)
+			if fraction > 1 {
+				fraction = 1
+			}
+			totalFraction += fraction
+			resourceToFractions = append(resourceToFractions, fraction)
+
+			fraction = float64(requested.EphemeralStorage) / float64(allocable.EphemeralStorage)
+			if fraction > 1 {
+				fraction = 1
+			}
+			totalFraction += fraction
+			resourceToFractions = append(resourceToFractions, fraction)
+
+			std := 0.0
+
+			// For most cases, resources are limited to cpu and memory, the std could be simplified to std := (fraction1-fraction2)/2
+			// len(fractions) > 2: calculate std based on the well-known formula - root square of Σ((fraction(i)-mean)^2)/len(fractions)
+			// Otherwise, set the std to zero is enough.
+			if len(resourceToFractions) == 2 {
+				std = math.Abs((resourceToFractions[0] - resourceToFractions[1]) / 2)
+
+			} else if len(resourceToFractions) > 2 {
+				mean := totalFraction / float64(len(resourceToFractions))
+				var sum float64
+				for _, fraction := range resourceToFractions {
+					sum = sum + (fraction-mean)*(fraction-mean)
+				}
+				std = math.Sqrt(sum / float64(len(resourceToFractions)))
+			}
+
+			// STD (standard deviation) is always a positive value. 1-deviation lets the score to be higher for node which has least deviation and
+			// multiplying it with `MaxNodeScore` provides the scaling factor needed.
+			nodeScore := int((1 - std) * float64(r.MaxScore))
+			nodeinfo.PluginResult.NodeScore += nodeScore
 		}
 	}
 
-}
-
-func fractionOfCapacity(req, cap int64) float64 {
-	if cap == 0 {
-		return 1
-	}
-	return float64(req) / float64(cap)
 }
