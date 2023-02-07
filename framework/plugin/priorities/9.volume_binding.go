@@ -35,7 +35,17 @@ func (pl VolumeBinding) Debugg(nodeInfoCache *r.NodeCache) {
 	}
 }
 
+type UtilizationShapePoint struct {
+	// Utilization (x axis). Valid values are 0 to 100. Fully utilized node maps to 100.
+	Utilization int32
+	// Score assigned to a given utilization (y axis). Valid values are 0 to 10.
+	Score int32
+}
+
+var Shape []UtilizationShapePoint
+
 func (pl VolumeBinding) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
+
 	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			nodeScore := float64(0)

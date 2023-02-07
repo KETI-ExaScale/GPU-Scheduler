@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 dest_path="/root/workspace/deployments/gpu-scheduler"
 password="ketilinux"
-ip="10.0.5.62"
+ip="10.0.5.120"
 
 #$1 deployment/d or " "
 
