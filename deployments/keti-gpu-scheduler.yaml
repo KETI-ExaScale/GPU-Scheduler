@@ -59,7 +59,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v0.278
+          image: ketidevit2/keti-gpu-scheduler:v1.0
           # args:
           #   - --debugging=on
           volumeMounts:
@@ -74,6 +74,9 @@ spec:
               memory: "200Mi"
             requests:
               memory: "200Mi"
+          env:
+          - name: DEBUGG_LEVEL
+            value: "LEVEL1"
       volumes:
         - name: tz-config
           hostPath:
@@ -92,7 +95,16 @@ metadata:
   namespace: gpu
 data:
   node-gpu-score-weight : "0.4:0.6"
-  pod-re-schedule-permit : "true"
-  node-reservation-permit : "false"
   nvlink-weight-percentage : "10"
   gpu-allocate-prefer : "spread"
+  node-reservation-permit : "false"
+  pod-re-schedule-permit : "true"
+  avoid-nvlink-one-gpu : "false"
+  multi-node-allocation-permit : "false"
+  non-gpu-node-prefer : "true"
+  multi-gpu-node-prefer : "true"
+  least-score-node-prefer : "false"
+  avoid-high-score-node : "false"
+  
+  
+  
