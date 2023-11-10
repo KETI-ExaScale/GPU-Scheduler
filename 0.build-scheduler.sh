@@ -1,7 +1,6 @@
-registry="ketidevit3"
-imagename="Exascale-keti-gpu-scheduler"
-version="v0.1"
-#version="v0.278"
+registry="ketidevit2"
+image_name="keti-gpu-scheduler"
+version="v1.0"
 
 #latest golang
 #export PATH=$PATH:/usr/local/go/bin && \
@@ -13,13 +12,13 @@ version="v0.1"
 go build -a --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo . && \
 
 # make image
-docker build -t $imagename:$version . && \
+docker build -t $image_name:$version . && \
 
 # add tag
-docker tag $imagename:$version $registry/$imagename:$version && \
+docker tag $image_name:$version $registry/$image_name:$version && \
 
 # login
 docker login && \
 
 # push image
-docker push $registry/$imagename:$version 
+docker push $registry/$image_name:$version 
