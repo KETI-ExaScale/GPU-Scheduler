@@ -21,7 +21,7 @@ spec:
         - name: regcred
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v0.278
+          image: ketidevit2/keti-gpu-scheduler:v1.0
           # args:
           #   - --debugging=on
           volumeMounts:
@@ -36,6 +36,9 @@ spec:
               memory: "200Mi"
             requests:
               memory: "200Mi"
+          env:
+          - name: DEBUGG_LEVEL
+            value: "LEVEL1"
       volumes:
         - name: tz-config
           hostPath:
