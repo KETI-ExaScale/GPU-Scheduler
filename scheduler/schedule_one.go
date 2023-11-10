@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"gpu-scheduler/framework"
 	r "gpu-scheduler/resourceinfo"
 )
 
@@ -39,47 +38,15 @@ const (
 )
 
 // metric update, score init
-func (sched *GPUScheduler) UpdateCache() {
-	r.KETI_LOG_L3("[STEP 1] Get Multi Metrics From KETI-GPU-Metric-Collector")
-	r.KETI_LOG_L2("# Sending gRPC Request To Metric Collector ...")
+func (sched *GPUScheduler) InitScore() {
+	r.KETI_LOG_L3("[STEP 1] Init Result")
 
 	sched.ScheduleResult.InitResult()
-	sched.NodeInfoCache.AvailableNodeCount = 0
+	sched.NodeInfoCache.AvailableNodeCount = sched.NodeInfoCache.TotalNodeCount
 
-	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
+	for _, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
 		nodeInfo.PluginResult.InitPluginResult()
-		nodeInfo.NodeMetric.InitNVLinkList()
-
-		if nodeInfo.MetricCollectorIP == "" {
-			ip := r.GetMetricCollectorIP(nodeInfo.Pods)
-			if ip == "" {
-				r.KETI_LOG_L2(fmt.Sprintf("# node {%s} cannot find GPU Metric Collector", nodeName))
-				nodeInfo.PluginResult.IsFiltered = true
-				continue
-			} else {
-				nodeInfo.MetricCollectorIP = ip
-			}
-		}
-
-		err := nodeInfo.NodeMetric.GetNodeMetric(nodeInfo.MetricCollectorIP)
-		if err != nil {
-			r.KETI_LOG_L3(fmt.Sprintf("<error> failed to get node metric - %s", err))
-			nodeInfo.PluginResult.IsFiltered = true
-			continue
-		}
-
-		for _, uuid := range nodeInfo.NodeMetric.GPU_UUID {
-			err := nodeInfo.GPUMetrics[uuid].GetGPUMetric(uuid, nodeInfo.MetricCollectorIP)
-			if err != nil {
-				r.KETI_LOG_L3(fmt.Sprintf("<error> failed to get gpu metric - %s", err))
-				nodeInfo.PluginResult.GPUScores[uuid].IsFiltered = true
-				continue
-			}
-
-			nodeInfo.PluginResult.GPUCountUp()
-		}
-
-		sched.NodeInfoCache.NodeCountUP()
+		nodeInfo.PluginResult.AvailableGPUCount = int(nodeInfo.TotalGPUCount)
 	}
 }
 
@@ -107,7 +74,7 @@ func (sched *GPUScheduler) preScheduling(ctx context.Context) {
 	processorLock.Lock()
 	defer processorLock.Unlock()
 
-	sched.NewPod = sched.NextPod()
+	sched.NewPod = sched.NextPod() // 스케줄링 큐에서 획득
 	if sched.NewPod == nil || sched.NewPod.Pod == nil {
 		return
 	}
@@ -294,18 +261,11 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	r.KETI_LOG_L2("# Node Scheduling Start")
 
 	newPod := sched.NewPod
-	sched.frameworkForPod()
 
 	//[STEP 1] Update Scheduler Cache
-	sched.UpdateCache() //metric update, score init
-	if sched.NodeInfoCache.AvailableNodeCount == 0 {
-		r.KETI_LOG_L3("<error> There is No Deployable Node >> Cannot Get Node Metric")
-		newPod.Status.Reasons = "Cannot Get Node Metric"
-		sched.SchedulingQueue.AddBackoffQ(newPod)
-		return
-	}
+	sched.InitScore() //score init
 
-	sched.NodeInfoCache.DumpCache() //테스트용
+	// sched.NodeInfoCache.DumpCache() //테스트용
 
 	//[STEP 2,3] Filtering/Scoring Node/GPU
 	err := sched.schedulePod()
@@ -320,7 +280,6 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 	//[STEP 4]Get Best Node/GPU
 	sched.GetBestNodeAndGPU()
 	sched.NodeInfoCache.UpdatePodState(newPod.Pod, r.Assumed)
-	sched.NodeInfoCache.GPUPodCountUp(sched.ScheduleResult.BestNode, sched.ScheduleResult.BestGPU)
 
 	//[STEP 5] Binding Pod To Node
 	go sched.Binding(ctx, *newPod, *sched.ScheduleResult)
@@ -329,73 +288,130 @@ func (sched *GPUScheduler) nodeScheduleOne(ctx context.Context) {
 func (sched *GPUScheduler) schedulePod() error {
 	//[STEP 2] Filtering Stage
 	r.KETI_LOG_L3("[STEP 2] Run Filtering Plugins")
-	sched.Framework.RunFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
+	sched.Framework.RunNodeFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
+
+	if sched.SchedulingPolicy.NonGPUNodePrefer /*sched.SchedulingPolicy.GPUFilteringTemperature*/ {
+		sched.Framework.RunGPUCountFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
+		// 	sched.Framework.RunGPUTemperatureFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
+	}
+	sched.Framework.RunGPUCountFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
-		return fmt.Errorf("Filtered All Nodes")
+		return fmt.Errorf("filtered all nodes")
 	}
 
 	//[STEP 3] Scoring Stage
-	r.KETI_LOG_L3("[STEP 3] Run Scoring Plugins")
-	if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
-		r.KETI_LOG_L3(fmt.Sprintf("(policy 2) gpu-allocate-prefer : %s", sched.SchedulingPolicy.GPUAllocatePrefer))
-		r.KETI_LOG_L3(">> Run GPUPodSpreadFramework")
-	} else {
-		r.KETI_LOG_L3(fmt.Sprintf("(policy 2) gpu-allocate-prefer : %s", sched.SchedulingPolicy.GPUAllocatePrefer))
-		r.KETI_LOG_L3(">> Run GPUPodBinpackFramework")
+	r.KETI_LOG_L3("[STEP 3] Get Analysis Metric Score")
+	err := sched.NodeInfoCache.GetAnalysisScore(sched.MetricAnalysisModuleIP)
+	if err != nil {
+		return fmt.Errorf("cannot connect analysis engine: %s", err)
 	}
-	sched.Framework.RunScoringPlugins(sched.NodeInfoCache, sched.NewPod)
 
 	return nil
 }
 
-func (sched *GPUScheduler) frameworkForPod() {
-	if sched.NewPod.IsGPUPod {
-		if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
-			sched.Framework = framework.GPUPodSpreadFramework()
-		} else {
-			sched.Framework = framework.GPUPodBinpackFramework()
-		}
-	} else {
-		sched.Framework = framework.NonGPUPodFramework()
-	}
-}
-
 func (sched *GPUScheduler) GetBestNodeAndGPU() {
 	r.KETI_LOG_L3("[STEP 4] Get Best Node/GPU")
+	var scoreRate []string
+	for nodeName, _ := range sched.NodeInfoCache.NodeInfoList {
+		fmt.Println("*node: ", nodeName)
+	}
+
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			sched.getTotalScore(nodeInfo, sched.NewPod.RequestedResource.GPUCount)
-			if sched.ScheduleResult.TotalScore < nodeInfo.PluginResult.TotalScore {
-				sched.ScheduleResult.BestNode = nodeName
-				sched.ScheduleResult.BestGPU = nodeInfo.PluginResult.BestGPU
-				sched.ScheduleResult.TotalScore = nodeInfo.PluginResult.TotalScore
+			inserted := false
+			for i, scoreName := range scoreRate {
+				if nodeInfo.PluginResult.TotalScore >= sched.NodeInfoCache.NodeInfoList[scoreName].PluginResult.TotalScore {
+					scoreRate = append(scoreRate[:i], append([]string{nodeName}, scoreRate[i:]...)...)
+					inserted = true
+					break
+				}
+			}
+			if !inserted {
+				scoreRate = append(scoreRate, nodeName)
 			}
 		}
-
 	}
+
+	if r.GPU_SCHEDUER_DEBUGG_LEVEL == r.LEVEL1 {
+		for _, name := range scoreRate {
+			fmt.Println("node: ", name, " ", sched.NodeInfoCache.NodeInfoList[name].PluginResult.TotalScore)
+		}
+		for nodeName, _ := range sched.NodeInfoCache.NodeInfoList {
+			fmt.Println("*node: ", nodeName)
+		}
+	}
+
+	selectedNodeName := ""
+	if sched.SchedulingPolicy.LeastScoreNodePrefer {
+		selectedNodeName = scoreRate[len(scoreRate)-1]
+	} else if sched.SchedulingPolicy.AvoidHighScoreNode {
+		if len(scoreRate) == 1 {
+			selectedNodeName = scoreRate[0]
+		} else {
+			selectedNodeName = scoreRate[1]
+		}
+	} else {
+		selectedNodeName = scoreRate[0]
+	}
+
+	sched.ScheduleResult.BestNode = selectedNodeName
+	sched.ScheduleResult.BestGPU = sched.NodeInfoCache.NodeInfoList[selectedNodeName].PluginResult.BestGPU
+	sched.ScheduleResult.TotalScore = sched.NodeInfoCache.NodeInfoList[selectedNodeName].PluginResult.TotalScore
+
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 2) %s : %v --> OK", r.Policy2, sched.SchedulingPolicy.NVLinkWeightPercentage))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 3) %s : %v --> OK", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 4) %s : %v --> OK", r.Policy4, sched.SchedulingPolicy.NodeReservationPermit))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 5) %s : %v --> OK", r.Policy5, sched.SchedulingPolicy.PodReSchedulePermit))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 6) %s : %v --> OK", r.Policy6, sched.SchedulingPolicy.AvoidNVLinkOneGPU))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 7) %s : %v --> OK", r.Policy7, sched.SchedulingPolicy.MultiNodeAllocationPermit))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 8) %s : %v --> OK", r.Policy8, sched.SchedulingPolicy.NonGPUNodePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 9) %s : %v --> OK", r.Policy9, sched.SchedulingPolicy.MultiGPUNodePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 10) %s : %v --> OK", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer))
+	r.KETI_LOG_L3(fmt.Sprintf("(policy 11) %s : %v --> OK", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode))
+
 	r.KETI_LOG_L3(fmt.Sprintf("- Scheduling Result: BestNode {%s}", sched.ScheduleResult.BestNode))
 	r.KETI_LOG_L3(fmt.Sprintf("- Scheduling Result: BestGPU {%s}", sched.ScheduleResult.BestGPU))
 }
 
 func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int) {
 	score := nodeinfo.PluginResult
-	if !sched.NewPod.IsGPUPod {
+	if !sched.NewPod.IsGPUPod || nodeinfo.PluginResult.AvailableGPUCount == 0 {
 		score.TotalScore = score.NodeScore
 		return
 	}
+	if sched.SchedulingPolicy.MultiGPUNodePrefer {
+		score.TotalScore = score.NodeScore * (10 + nodeinfo.PluginResult.AvailableGPUCount) / 10
+	}
 	sched.getTotalGPUScore(nodeinfo, requestedGPU)
 
-	score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
-		float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
+	if sched.NewPod.IsGPUPod && nodeinfo.PluginResult.AvailableGPUCount == 0 {
+		score.TotalScore = int(math.Round(float64(score.NodeScore) * 0.1))
+		r.KETI_LOG_L2(fmt.Sprintf("- Total Score(nodeScore * 0.1) = %d * 0.1 = %d", score.NodeScore, score.TotalScore))
+	} else {
+		score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
+			float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
 
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 1) node-gpu-score-weight : nodeWeight=%.1f, gpuWeight=%.1f", sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
-	r.KETI_LOG_L3(fmt.Sprintf("- Total Score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
-		sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore))
+		r.KETI_LOG_L2(fmt.Sprintf("- Total Score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
+			sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore))
+	}
 }
 
 func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU int) {
 	score := nodeinfo.PluginResult
 	totalGPUScore, bestGPU := float64(0), ""
+
+	if sched.NewPod.IsGPUPod && nodeinfo.PluginResult.AvailableGPUCount == 0 {
+		return
+	}
+
+	if requestedGPU == 1 && sched.SchedulingPolicy.AvoidNVLinkOneGPU {
+		for _, nvlink := range nodeinfo.NVLinkList {
+			score.GPUScores[nvlink.GPU1].GPUScore = int(float32(score.GPUScores[nvlink.GPU1].GPUScore) * 0.9)
+			score.GPUScores[nvlink.GPU2].GPUScore = int(float32(score.GPUScores[nvlink.GPU2].GPUScore) * 0.9)
+		}
+	}
 
 	//최종 GPUScore 순으로 정렬
 	type gs []*r.GPUScore
@@ -412,14 +428,30 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 	}
 
 	//NVLink GPU 고려 X
-	if requestedGPU == 1 || nodeinfo.NodeMetric.NVLinkList == nil {
-		bestGPUScore := sortedGPUScore[:requestedGPU] //스코어 점수 상위 N개의 GPU
-		for _, gpu := range bestGPUScore {
-			totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
-			bestGPU += gpu.UUID + ","
+	if requestedGPU == 1 || nodeinfo.NVLinkList == nil {
+		if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
+			bestGPUScore := sortedGPUScore[:requestedGPU] //스코어 점수 상위 N개의 GPU
+
+			for _, gpu := range bestGPUScore {
+				totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+				bestGPU += gpu.UUID + ","
+			}
+
+			score.TotalGPUScore = int(math.Round(totalGPUScore))
+			score.BestGPU = strings.Trim(bestGPU, ",")
+		} else /*binpack*/ {
+			start := len(sortedGPUScore) - requestedGPU
+			end := len(sortedGPUScore)
+			bestGPUScore := sortedGPUScore[start:end] //스코어 점수 하위 N개의 GPU
+
+			for _, gpu := range bestGPUScore {
+				totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+				bestGPU += gpu.UUID + ","
+			}
+
+			score.TotalGPUScore = int(math.Round(totalGPUScore))
+			score.BestGPU = strings.Trim(bestGPU, ",")
 		}
-		score.TotalGPUScore = int(math.Round(totalGPUScore))
-		score.BestGPU = strings.Trim(bestGPU, ",")
 
 		return
 	}
@@ -429,8 +461,8 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 
 	//NVLink Score순으로 정렬
 	type ns []r.NVLink
-	sortedNVLinkScore := make(ns, 0, len(nodeinfo.NodeMetric.NVLinkList))
-	for _, n := range nodeinfo.NodeMetric.NVLinkList {
+	sortedNVLinkScore := make(ns, 0, len(nodeinfo.NVLinkList))
+	for _, n := range nodeinfo.NVLinkList {
 		sortedNVLinkScore = append(sortedNVLinkScore, *n)
 	}
 	sort.SliceStable(sortedNVLinkScore, func(i, j int) bool {
@@ -506,13 +538,10 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 
 	score.TotalGPUScore = int(math.Round(totalGPUScore))
 	score.BestGPU = strings.Trim(bestGPU, ",")
-
 }
 
 func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
-	r.KETI_LOG_L2("S#19. Check NVLink GPU")
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 3) nvlink-weight-percentage : %d %%", sched.SchedulingPolicy.NVLinkWeightPercentage))
-	for _, nvl := range nodeinfo.NodeMetric.NVLinkList {
+	for _, nvl := range nodeinfo.NVLinkList {
 		if nodeinfo.PluginResult.GPUScores[nvl.GPU1].IsFiltered ||
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].IsFiltered {
 			nvl.IsFiltered = true
@@ -521,31 +550,8 @@ func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 		score := float64(nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore+
 			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
 		nvl.Score = int(math.Round(score * float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100)))
-		r.KETI_LOG_L3(fmt.Sprintf("- linked gpu{%s}:gpu{%s} score = (%d+%d) / 2 * %.2f = %d",
-			nvl.GPU1, nvl.GPU2, nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore,
-			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score))
+		// r.KETI_LOG_L3(fmt.Sprintf("- linked gpu{%s}:gpu{%s} score = (%d+%d) / 2 * %.2f = %d",
+		// 	nvl.GPU1, nvl.GPU2, nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore,
+		// 	nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score))
 	}
 }
-
-// func (sched *GPUScheduler) checkReserveResources() {
-// 	if sched.
-// }
-
-// func (sched *GPUScheduler) PostEvent(event *corev1.Event) {
-// 	_, err := sched.NodeInfoCache.HostKubeClient.CoreV1().Events(event.InvolvedObject.Namespace).Update(context.TODO(), event, metav1.UpdateOptions{})
-// 	if err != nil {
-// 		fmt.Println("post event failed")
-// 	}
-// }
-
-// func (sched *GPUScheduler) IsThereAnyNode() bool {
-// 	if sched.NodeInfoCache.TotalNodeCount == 0 {
-// 		sched.NewPod.FailedScheduling()
-// 		message := fmt.Sprintf("pod (%s) failed to fit in any node", sched.NewPod.Pod.ObjectMeta.Name)
-// 		log.Println(message)
-// 		event := sched.NewPod.MakeNoNodeEvent(message)
-// 		PostEvent(event)
-// 		return false
-// 	}
-// 	return true
-// }
