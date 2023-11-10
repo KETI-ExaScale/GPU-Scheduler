@@ -39,15 +39,15 @@ func (pl GPUUtilization) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl GPUUtilization) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, gpu := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore := float64((200 - gpu.GPUUtil) / 200)
-					gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
-				}
-			}
-		}
-	}
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for j, gpu := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+	// 				gpuScore := float64((200 - gpu.GPUUtil) / 200)
+	// 				gpuScore = float64(nodeinfo.PluginResult.GPUScores[j].GPUScore) * gpuScore
+	// 				nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
