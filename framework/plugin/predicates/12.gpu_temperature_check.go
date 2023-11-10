@@ -16,18 +16,18 @@ func (pl CheckGPUTemperature) Debugg() {
 }
 
 func (pl CheckGPUTemperature) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for gpuName, gpu := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[gpuName].IsFiltered {
-					if gpu.GPUTemperature > gpu.GPUSlowdownTemp {
-						reason := fmt.Sprintf("GPUTemperature=%d > GPUSlowdownTemp=%d", gpu.GPUTemperature, gpu.GPUSlowdownTemp)
-						filterState := r.FilterStatus{r.Unschedulable, pl.Name(), reason, nil}
-						nodeinfo.PluginResult.GPUScores[gpuName].FilterGPU(nodeName, gpuName, filterState)
-						nodeinfo.PluginResult.GPUCountDown()
-					}
-				}
-			}
-		}
-	}
+	// for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for gpuName, gpu := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[gpuName].IsFiltered {
+	// 				if gpu.GPUTemperature > gpu.GPUSlowdownTemp {
+	// 					reason := fmt.Sprintf("GPUTemperature=%d > GPUSlowdownTemp=%d", gpu.GPUTemperature, gpu.GPUSlowdownTemp)
+	// 					filterState := r.FilterStatus{r.Unschedulable, pl.Name(), reason, nil}
+	// 					nodeinfo.PluginResult.GPUScores[gpuName].FilterGPU(nodeName, gpuName, filterState)
+	// 					nodeinfo.PluginResult.GPUCountDown()
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
