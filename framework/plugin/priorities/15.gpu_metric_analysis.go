@@ -15,7 +15,6 @@ package priorities
 
 import (
 	"fmt"
-	"math"
 
 	r "gpu-scheduler/resourceinfo"
 )
@@ -40,14 +39,14 @@ func (pl GPUMerticAnalysis) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl GPUMerticAnalysis) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, _ := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore := float64(100)
-					nodeinfo.PluginResult.GPUScores[j].GPUScore += int(math.Round(gpuScore / float64(r.Gs)))
-				}
-			}
-		}
-	}
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for j, _ := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+	// 				gpuScore := float64(100)
+	// 				nodeinfo.PluginResult.GPUScores[j].GPUScore += int(math.Round(gpuScore / float64(r.Gs)))
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
