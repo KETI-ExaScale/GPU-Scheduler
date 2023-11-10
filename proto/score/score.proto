@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package score;
+
+option go_package = "grpcserver/protos/score";
+
+service MetricGRPC {
+  rpc GetScore(Request) returns (Response); 
+}
+
+message Request {
+}
+
+message Response {
+  map<string, Score> message = 1;
+}
+
+message Score{
+  float nodescore = 1;
+  float gpu_temperature = 2;
+  bool memory_available = 3;
+  map<string, float> gpuscore = 4;
+}
