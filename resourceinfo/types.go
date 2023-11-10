@@ -582,13 +582,16 @@ type NodeInfo struct {
 	// Keys are in the format "namespace/name".
 	PVCRefCounts map[string]int
 	// node "keti-gpu-metric-collector" ip
-	MetricCollectorIP string
+	// MetricCollectorIP string
 	// nodemetric from "keti-gpu-metric-collector"
-	NodeMetric *NodeMetric
+	// NodeMetric *NodeMetric //수정
+	NVLinkList []*NVLink
 	// gpumetric from "keti-gpu-metric-collector"
-	GPUMetrics map[string]*GPUMetric
-	// node with gpu
-	IsGPUNode bool
+	// GPUMetrics map[string]*GPUMetric
+	GPU_UUID []string //GPU UUID
+	// IsGPUNode bool //수정
+	// gpu count
+	TotalGPUCount int64
 	// scheduling plugin result
 	PluginResult *PluginResult
 	// Total requested resources of all pods on this node. This includes assumed
@@ -620,17 +623,13 @@ func NewNodeInfo() *NodeInfo {
 		UsedPorts:                    make(HostPortInfo),
 		ImageStates:                  make(map[string]*ImageStateSummary),
 		PVCRefCounts:                 make(map[string]int),
-		MetricCollectorIP:            "",
-		NodeMetric:                   NewNodeMetric(),
-		GPUMetrics:                   make(map[string]*GPUMetric),
-		IsGPUNode:                    true,
+		NVLinkList:                   make([]*NVLink, 0),
+		GPU_UUID:                     make([]string, 0),
+		TotalGPUCount:                0,
 		PluginResult:                 NewPluginResult(),
 		Requested:                    &Resource{},
 		Allocatable:                  &Resource{},
-		// ReservePodList:               sets.NewString(),
-		// Avaliable:                    false,
-		// TotalGPUCount:                0,
-		// NonZeroRequested:             &Resource{},
+		Reserved:                     false,
 	}
 }
 
@@ -641,25 +640,12 @@ func (n *NodeInfo) SetNode(node *corev1.Node) {
 }
 
 func (n *NodeInfo) InitNodeInfo(node *corev1.Node, hostKubeClient *kubernetes.Clientset) {
-	//grpchost
-	ip := GetMetricCollectorIP(n.Pods)
-	n.MetricCollectorIP = ip
+	n.PluginResult = NewPluginResult() //pluginresult
 
-	//pluginresult
-	n.PluginResult = NewPluginResult()
-
-	if ip == "" { // GPU Metric Collector 'Not' running in node
-		n.PluginResult.IsFiltered = true //node filtered
-	} else { // GPU Metric Collector running in node
-		err := n.GetInitMetric(ip) //init node, gpu metric
-		if err != nil {
-			KETI_LOG_L3(fmt.Sprintf("<error> Get Init Metric {%s} error - %s", node.Name, err))
-			n.PluginResult.IsFiltered = true
-		}
-		// if isNonGPUNode(node) {
-		// 	n.IsGPUNode = false
-		// }
-	}
+	err := n.GetGPUInitInfo(node)
+	if err != nil {
+		KETI_LOG_L3(fmt.Sprintf("<error> get gpu init info error-%s", err))
+	} //node의 host-api-service와 통신해서 gpu_uuid, count, nvlink init 획득
 }
 
 // return whether the node is GPUNode or not
@@ -726,93 +712,25 @@ func NewNVLink(s1 string, s2 string, l int32) NVLink {
 	}
 }
 
-// each node metric
-type NodeMetric struct {
-	MilliCPUTotal int64
-	MilliCPUUsed  int64
-	MemoryTotal   int64
-	MemoryUsed    int64
-	StorageTotal  int64
-	StorageUsed   int64
-	TotalGPUCount int64
-	GPU_UUID      []string
-	MaxGPUMemory  int64
-	NVLinkList    []*NVLink
-}
-
-func NewNodeMetric() *NodeMetric {
-	return &NodeMetric{
-		MilliCPUTotal: 0,
-		MilliCPUUsed:  0,
-		MemoryTotal:   0,
-		MemoryUsed:    0,
-		StorageTotal:  0,
-		StorageUsed:   0,
-		TotalGPUCount: 0,
-		GPU_UUID:      nil,
-		MaxGPUMemory:  0,
-		NVLinkList:    nil,
-	}
-}
-
-func (nm *NodeMetric) InitNVLinkList() {
-	for _, nvlink := range nm.NVLinkList {
+func (n *NodeInfo) InitNVLinkList() {
+	for _, nvlink := range n.NVLinkList {
 		nvlink.Score = 0
 		nvlink.IsFiltered = false
 		nvlink.IsSelected = false
 	}
 }
 
-// each GPU metric
-type GPUMetric struct {
-	GPUName             string
-	GPUIndex            int64
-	GPUPowerUsed        int64
-	GPUPowerTotal       int64
-	GPUMemoryTotal      int64
-	GPUMemoryFree       int64
-	GPUMemoryUsed       int64
-	PodCount            int64
-	GPUFlops            int64
-	GPUArch             int64
-	GPUUtil             int64
-	GPUTemperature      int64
-	GPUMaxOperativeTemp int64
-	GPUSlowdownTemp     int64
-	GPUShutdownTemp     int64
-}
+// func (n *NodeInfo) gpuPodCountDown() error {
+// 	if n.GPUPodcount == 0 {
+// 		return fmt.Errorf("gpu metric pod count = 0")
+// 	}
+// 	n.GPUPodcount--
+// 	return nil
+// }
 
-func NewGPUMetric() *GPUMetric {
-	return &GPUMetric{
-		GPUName:             "",
-		GPUIndex:            0,
-		GPUPowerUsed:        0,
-		GPUPowerTotal:       0,
-		GPUMemoryTotal:      0,
-		GPUMemoryFree:       0,
-		GPUMemoryUsed:       0,
-		GPUTemperature:      0,
-		PodCount:            0,
-		GPUFlops:            0,
-		GPUArch:             0,
-		GPUUtil:             0,
-		GPUMaxOperativeTemp: 0,
-		GPUSlowdownTemp:     0,
-		GPUShutdownTemp:     0,
-	}
-}
-
-func (gm *GPUMetric) gpuPodCountDown() error {
-	if gm.PodCount == 0 {
-		return fmt.Errorf("gpu metric pod count = 0")
-	}
-	gm.PodCount--
-	return nil
-}
-
-func (gm *GPUMetric) gpuPodCountUp() {
-	gm.PodCount++
-}
+// func (n *NodeInfo) gpuPodCountUp() {
+// 	n.GPUPodcount++
+// }
 
 // Resource is a collection of compute resource.
 type Resource struct {
@@ -1076,22 +994,22 @@ func (n *NodeInfo) RemoveNode() {
 	n.node = nil
 }
 
-func (n *NodeInfo) gpuPodCountDown(pod *corev1.Pod) {
-	uuids := pod.ObjectMeta.Annotations["UUID"]
-	uuid_list := strings.Split(uuids, ",")
+// func (n *NodeInfo) gpuPodCountDown(pod *corev1.Pod) {
+// 	uuids := pod.ObjectMeta.Annotations["UUID"]
+// 	uuid_list := strings.Split(uuids, ",")
 
-	for _, uuid := range uuid_list {
-		n.GPUMetrics[uuid].gpuPodCountDown()
-	}
-}
+// 	for _, uuid := range uuid_list {
+// 		n.GPUMetrics[uuid].gpuPodCountDown()
+// 	}
+// }
 
-func (n *NodeInfo) gpuPodCountUp(uuids string) {
-	uuid_list := strings.Split(uuids, ",")
+// func (n *NodeInfo) gpuPodCountUp(uuids string) {
+// 	uuid_list := strings.Split(uuids, ",")
 
-	for _, uuid := range uuid_list {
-		n.GPUMetrics[uuid].gpuPodCountUp()
-	}
-}
+// 	for _, uuid := range uuid_list {
+// 		n.GPUMetrics[uuid].gpuPodCountUp()
+// 	}
+// }
 
 // GetPodKey returns the string key of a pod.
 func GetPodKey(pod *corev1.Pod) (string, error) {
