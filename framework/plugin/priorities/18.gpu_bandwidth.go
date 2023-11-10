@@ -40,13 +40,13 @@ func (pl GPUBandwidth) Debugg(nodeInfoCache *r.NodeCache) {
 
 func (pl GPUBandwidth) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, _ := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					// nodeinfo.PluginResult.GPUScores[j].GPUScore = gpuScore
-				}
-			}
-		}
-	}
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for j, _ := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+	// 				// nodeinfo.PluginResult.GPUScores[j].GPUScore = gpuScore
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
