@@ -25,6 +25,7 @@ type GPUScheduler struct {
 	Framework               framework.GPUSchedulerInterface
 	ScheduleResult          *r.ScheduleResult
 	ClusterInfoCache        *r.ClusterCache
+	MetricAnalysisModuleIP  string
 	ClusterManagerHost      string
 	AvailableClusterManager bool
 }
@@ -39,11 +40,15 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 		//다른 클러스터엔 가능할수도
 		r.KETI_LOG_L3(fmt.Sprintf("<error> cannot find any node in cluster!-%s", err))
 	}
-	fwk := framework.GPUPodSpreadFramework()
+	fwk := framework.GPUPodFramework()
 	sr := r.NewScheduleResult()
 	cc, err := r.NewClusterCache()
 	cmhost := ""
-	cc.DumpClusterInfo() //테스트용
+
+	if r.GPU_SCHEDUER_DEBUGG_LEVEL == r.LEVEL1 {
+		cc.DumpClusterInfo()
+	}
+
 	if err != nil {
 		r.KETI_LOG_L3("<error> kubeconfig error / scheduling is only available to my cluster")
 		//내 클러스터에만 배포 가능
@@ -55,6 +60,8 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 		}
 	}
 
+	ma := GetMetricAnalysisModuleIP(hostKubeClient) //예외처리 필요
+
 	return &GPUScheduler{
 		NodeInfoCache:           nc,
 		SchedulingPolicy:        sp,
@@ -63,41 +70,47 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 		Framework:               fwk,
 		ScheduleResult:          sr,
 		ClusterInfoCache:        cc,
+		MetricAnalysisModuleIP:  ma,
 		ClusterManagerHost:      cmhost,
 		AvailableClusterManager: false,
 	}, nil
 }
 
 func (sched *GPUScheduler) Run(ctx context.Context) {
-	sched.SchedulingQueue.Run()                        //Scheduling Queue Flush Routine
+	sched.SchedulingQueue.Run()
 	wait.UntilWithContext(ctx, sched.preScheduling, 0) // Schedule Pod Routine
 	sched.SchedulingQueue.Close()
 }
 
-/*
-	   ------  Policy List ------
-		1. node-gpu-score-weight
-		(2. pod-re-schedule-permit)
-		2. nvlink-weight-percentage
-		3. gpu-allocate-prefer
-*/
 type SchedulingPolicy struct {
-	NodeWeight             float64
-	GPUWeight              float64
-	ReSchedulePermit       bool
-	NodeReservationPermit  bool
-	NVLinkWeightPercentage int64
-	GPUAllocatePrefer      string
+	NodeWeight                float64
+	GPUWeight                 float64
+	NVLinkWeightPercentage    int64
+	GPUAllocatePrefer         string
+	NodeReservationPermit     bool
+	PodReSchedulePermit       bool
+	AvoidNVLinkOneGPU         bool
+	MultiNodeAllocationPermit bool
+	NonGPUNodePrefer          bool
+	MultiGPUNodePrefer        bool
+	LeastScoreNodePrefer      bool
+	AvoidHighScoreNode        bool
 }
 
 func NewSchedulingPolicy() *SchedulingPolicy {
 	return &SchedulingPolicy{
-		NodeWeight:             0.4,
-		GPUWeight:              0.6,
-		ReSchedulePermit:       true,
-		NodeReservationPermit:  true,
-		NVLinkWeightPercentage: 10,
-		GPUAllocatePrefer:      "spread",
+		NodeWeight:                0.4,
+		GPUWeight:                 0.6,
+		NVLinkWeightPercentage:    10,
+		GPUAllocatePrefer:         "spread",
+		NodeReservationPermit:     false,
+		PodReSchedulePermit:       true,
+		AvoidNVLinkOneGPU:         false,
+		MultiNodeAllocationPermit: false,
+		NonGPUNodePrefer:          true,
+		MultiGPUNodePrefer:        true,
+		LeastScoreNodePrefer:      false,
+		AvoidHighScoreNode:        false,
 	}
 }
 
@@ -127,22 +140,21 @@ func (sched *GPUScheduler) InitClusterManager() error {
 		return nil
 	}
 
-	initPod := r.NewQueuedPodInfo(nil) //Run Test Init Pod
-	sched.Framework = framework.InitNodeScoreFramework()
+	// initPod := r.NewQueuedPodInfo(nil) //Run Test Init Pod
 
-	sched.UpdateCache() //metric update, score init
+	sched.InitScore() //score init
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
 		r.KETI_LOG_L3("<error> there isn't node to schedule")
 		return nil
 	}
 
-	sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
+	// sched.Framework.RunScoringPlugins(sched.NodeInfoCache, initPod)
 
 	var initList []InitStruct
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
 		if !nodeInfo.PluginResult.IsFiltered {
 			nodeScore := calcInitNodeScore(nodeInfo, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
-			initStruct := InitStruct{nodeName, nodeScore, nodeInfo.NodeMetric.TotalGPUCount}
+			initStruct := InitStruct{nodeName, nodeScore, nodeInfo.TotalGPUCount}
 			initList = append(initList, initStruct)
 		}
 	}
@@ -168,6 +180,17 @@ func calcInitNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float
 	totalScore := nodeScore*nodeWeight + gpuScore*gpuWeight
 	r.KETI_LOG_L1(fmt.Sprintf("<test> nodescore:%.3f, gpuscore:%.3f, totalscore:%.3f", nodeScore, gpuScore, totalScore))
 	return int64(totalScore)
+}
+
+func GetMetricAnalysisModuleIP(hostKubeClient *kubernetes.Clientset) string {
+	pods, _ := hostKubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+
+	for _, pod := range pods.Items {
+		if strings.HasPrefix(pod.Name, "keti-analysis-engine") && pod.Status.Phase == "Running" {
+			return pod.Status.PodIP
+		}
+	}
+	return ""
 }
 
 // func (sched *GPUScheduler) InitPluginResult() {
