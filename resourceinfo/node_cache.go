@@ -40,31 +40,29 @@ const (
 )
 
 type NodeCache struct {
-	period time.Duration
+	period             time.Duration
+	mu                 sync.RWMutex
+	PodStates          map[string]*PodState //스케줄링한 파드 전부(생성/대기)
+	NodeInfoList       map[string]*NodeInfo
+	ImageStates        map[string]*imageState
+	TotalNodeCount     int
+	AvailableNodeCount int
+	HostKubeClient     *kubernetes.Clientset
 	// ttl                    time.Duration
-	mu sync.RWMutex
 	// assumedPods            sets.String          //스케줄링 완료된 파드 이름, 생성되면 지움
-	PodStates              map[string]*PodState //스케줄링한 파드 전부(생성/대기)
-	NodeInfoList           map[string]*NodeInfo
-	ImageStates            map[string]*imageState
-	GPUMemoryMostInCluster int64
-	TotalNodeCount         int
-	AvailableNodeCount     int
-	HostKubeClient         *kubernetes.Clientset
 }
 
 func NewNodeInfoCache(hostKubeClient *kubernetes.Clientset) *NodeCache {
 	return &NodeCache{
-		period: cleanAssumedPeriod,
+		period:             cleanAssumedPeriod,
+		PodStates:          make(map[string]*PodState),
+		NodeInfoList:       make(map[string]*NodeInfo),
+		ImageStates:        make(map[string]*imageState),
+		TotalNodeCount:     0,
+		AvailableNodeCount: 0,
+		HostKubeClient:     hostKubeClient,
 		// ttl:                    durationToExpireAssumedPod,
 		// assumedPods:            make(sets.String),
-		PodStates:              make(map[string]*PodState),
-		NodeInfoList:           make(map[string]*NodeInfo),
-		ImageStates:            make(map[string]*imageState),
-		GPUMemoryMostInCluster: 0,
-		TotalNodeCount:         0,
-		AvailableNodeCount:     0,
-		HostKubeClient:         hostKubeClient,
 	}
 }
 
@@ -79,6 +77,10 @@ func (c *NodeCache) InitNodeInfoCache( /*scheduliungQ *SchedulingQueue*/ ) error
 		// if !IsMasterNode(&node) { // Not Schedule To Master Node
 		// 	c.AddNode(node)
 		// }
+	}
+
+	if GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL1 { //LEVEL = 1,2,3
+		c.DumpCache()
 	}
 
 	return nil
@@ -111,6 +113,7 @@ func (c *NodeCache) DumpCache() error {
 			// for _, pod := range nodeInfo.Pods {
 			// 	fmt.Println("# ", pod.Pod.Name)
 			// }
+			KETI_LOG_L2(fmt.Sprintf("- Num Of Pods:%d", len(nodeInfo.Pods)))
 
 			// fmt.Print("(3) image: ")
 			// for imageName, _ := range nodeInfo.ImageStates {
@@ -118,14 +121,12 @@ func (c *NodeCache) DumpCache() error {
 			// }
 			// fmt.Println()
 
-			KETI_LOG_L2(fmt.Sprintf("-Num Of Images:%d", len(nodeInfo.ImageStates)))
+			KETI_LOG_L2(fmt.Sprintf("- Num Of Images:%d", len(nodeInfo.ImageStates)))
 
-			// fmt.Println("(4) GPU Names: ")
-			// for i, uuid := range nodeInfo.NodeMetric.GPU_UUID {
-			// 	fmt.Println("# ", i, ":", uuid)
-			// }
-
-			KETI_LOG_L2(fmt.Sprintf("-Total GPU Count: %d", nodeInfo.NodeMetric.TotalGPUCount))
+			KETI_LOG_L2(fmt.Sprintf("- Total GPU Count:%d", nodeInfo.TotalGPUCount))
+			for i, uuid := range nodeInfo.GPU_UUID {
+				fmt.Println("# ", i, ":", uuid)
+			}
 
 			//KETI_LOG_L1("# Used Ports: [")
 			//for port, _ := range nodeInfo.UsedPorts {
@@ -133,30 +134,15 @@ func (c *NodeCache) DumpCache() error {
 			//	KETI_LOG_L1("]")
 			//}
 
-			KETI_LOG_L2(fmt.Sprintf("-Node Memory(Used/Total): %d/%d", nodeInfo.NodeMetric.MemoryUsed, nodeInfo.NodeMetric.MemoryTotal))
-			KETI_LOG_L2(fmt.Sprintf("-Node CPU(Used/Total):  %d/%d", nodeInfo.NodeMetric.MilliCPUUsed, nodeInfo.NodeMetric.MilliCPUTotal))
-			KETI_LOG_L2(fmt.Sprintf("-Node Storage(Used/Total):  %d/%d", nodeInfo.NodeMetric.StorageUsed, nodeInfo.NodeMetric.StorageTotal))
-
-			KETI_LOG_L2("(metric 1) NVLink List: ")
-			for _, nvlink := range nodeInfo.NodeMetric.NVLinkList {
+			KETI_LOG_L2("- NVLink List: ")
+			for _, nvlink := range nodeInfo.NVLinkList {
 				KETI_LOG_L3(fmt.Sprintf("[%s:%s:%d]", nvlink.GPU1, nvlink.GPU2, nvlink.Lane))
-			}
-
-			for gpuName, gpu := range nodeInfo.GPUMetrics {
-				KETI_LOG_L2(fmt.Sprintf(">>> GPU Name : %s", gpuName))
-				KETI_LOG_L2(fmt.Sprintf("(metric 2) GPU Temperature: %d", gpu.GPUTemperature))
-				KETI_LOG_L2(fmt.Sprintf("(metric 3) GPU Architecture: %d", gpu.GPUArch))
-				KETI_LOG_L2(fmt.Sprintf("(metric 4) GPU Flops: %d", gpu.GPUFlops))
-				KETI_LOG_L2(fmt.Sprintf("(metric 5) GPU Memory(Free/Used/Total): %d/%d/%d", gpu.GPUMemoryFree, gpu.GPUMemoryUsed, gpu.GPUMemoryTotal))
-				KETI_LOG_L2(fmt.Sprintf("(metric 6) GPU Power(Free/Total): %d/%d", gpu.GPUPowerUsed, gpu.GPUPowerUsed))
-				KETI_LOG_L2(fmt.Sprintf("(metric 7) GPU Utilization: %d", gpu.GPUUtil))
-				KETI_LOG_L2(fmt.Sprintf("(metric 8) GPU PodCount: %d", gpu.PodCount))
 			}
 		} else {
 			KETI_LOG_L2(fmt.Sprintf(">> NodeName : %s -> filtered node", nodeName))
 		}
 	}
-	KETI_LOG_L2("----------------------------------------\n")
+	KETI_LOG_L2("----------------------------------------")
 
 	return nil
 }
@@ -540,17 +526,10 @@ func (cache *NodeCache) AddNode(node *corev1.Node) error {
 	}
 
 	n.InitNodeInfo(node, cache.HostKubeClient)
-	// //gpu metric collector가 없다면 스케줄링 대상 노드 X
-	// if mc := n.InitNodeInfo(node, cache.HostKubeClient); !mc {
-	// 	n.Avaliable = false
-	// 	return nil
-	// }
+	// n.Avaliable = false //gpu metric collector가 없다면 스케줄링 대상 노드 X
 
-	cache.GPUMemoryMostInCluster = Max(cache.GPUMemoryMostInCluster, n.NodeMetric.MaxGPUMemory)
 	cache.addNodeImageStates(node, n)
 	n.SetNode(node)
-
-	// cache.DumpCache() //테스트용
 
 	return nil
 }
@@ -647,14 +626,6 @@ func (cache *NodeCache) removeNodeImageStates(node *corev1.Node) {
 			}
 		}
 	}
-}
-
-func (c *NodeCache) GPUPodCountDown(pod *corev1.Pod) {
-	c.NodeInfoList[pod.Spec.NodeName].gpuPodCountDown(pod)
-}
-
-func (c *NodeCache) GPUPodCountUp(nodename string, uuids string) {
-	c.NodeInfoList[nodename].gpuPodCountUp(uuids)
 }
 
 // func (cache *Cache) run() {
