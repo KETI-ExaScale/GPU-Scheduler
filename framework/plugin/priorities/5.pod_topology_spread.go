@@ -73,8 +73,8 @@ func PodTopologySpread_() PodTopologySpread {
 	statefulSets := informerFactory.Apps().V1().StatefulSets().Lister()
 
 	return PodTopologySpread{
-		systemDefaulted:    r,
-		defaultConstraints: r,
+		systemDefaulted:    false, //r,
+		defaultConstraints: nil,   //r,
 		services:           services,
 		replicationCtrls:   replicationCtrls,
 		replicaSets:        replicaSets,
