@@ -18,6 +18,7 @@ package resourceinfo
 
 import (
 	"fmt"
+	"os"
 )
 
 const (
@@ -25,10 +26,16 @@ const (
 	Gs            = int(10) //GPU 스코어링 단계 수
 	SchedulerName = "gpu-scheduler"
 	Policy1       = "node-gpu-score-weight"
-	Policy2       = "pod-re-schedule-permit"
-	Policy3       = "node-reservation-permit"
-	Policy4       = "nvlink-weight-percentage"
-	Policy5       = "gpu-allocate-prefer"
+	Policy2       = "nvlink-weight-percentage"
+	Policy3       = "gpu-allocate-prefer"
+	Policy4       = "node-reservation-permit"
+	Policy5       = "pod-re-schedule-permit"
+	Policy6       = "avoid-nvlink-one-gpu"
+	Policy7       = "multi-node-allocation-permit"
+	Policy8       = "non-gpu-node-prefer"
+	Policy9       = "multi-gpu-node-prefer"
+	Policy10      = "least-score-node-prefer"
+	Policy11      = "avoid-high-score-node"
 )
 
 const (
@@ -78,22 +85,28 @@ const (
 	WildCard              GVK = "*"
 )
 
-const GPU_SCHEDUER_DEBUGG_LEVEL = 1
+const (
+	LEVEL1 = "LEVEL1"
+	LEVEL2 = "LEVEL2"
+	LEVEL3 = "LEVEL3"
+)
+
+var GPU_SCHEDUER_DEBUGG_LEVEL = os.Getenv("DEBUGG_LEVEL")
 
 func KETI_LOG_L1(log string) { //자세한 출력, DumpClusterInfo DumpNodeInfo
-	if GPU_SCHEDUER_DEBUGG_LEVEL < 2 { //LEVEL = 1,2,3
+	if GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL1 {
 		fmt.Println(log)
 	}
 }
 
 func KETI_LOG_L2(log string) { // 기본출력
-	if GPU_SCHEDUER_DEBUGG_LEVEL < 3 { //LEVEL = 2,3
+	if GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL1 || GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL2 {
 		fmt.Println(log)
 	}
 }
 
 func KETI_LOG_L3(log string) { //필수출력, 정량용, 에러
-	if GPU_SCHEDUER_DEBUGG_LEVEL < 4 { //LEVEL = 3
+	if GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL1 || GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL2 || GPU_SCHEDUER_DEBUGG_LEVEL == LEVEL3 {
 		fmt.Println(log)
 	}
 }
