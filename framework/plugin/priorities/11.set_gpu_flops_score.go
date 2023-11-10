@@ -39,16 +39,16 @@ func (pl SetGPUFlopsScore) Debugg(nodeInfoCache *r.NodeCache) {
 }
 
 func (pl SetGPUFlopsScore) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, gpu := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuScore := gpu.GPUFlops / 1000
-					nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
-				}
-			}
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for j, gpu := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+	// 				gpuScore := gpu.GPUFlops / 1000
+	// 				nodeinfo.PluginResult.GPUScores[j].GPUScore = int(gpuScore)
+	// 			}
+	// 		}
 
-		}
-	}
+	// 	}
+	// }
 
 }
