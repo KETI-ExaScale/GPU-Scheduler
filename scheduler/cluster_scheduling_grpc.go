@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	pb "gpu-scheduler/proto"
+	pb "gpu-scheduler/proto/cluster"
 	r "gpu-scheduler/resourceinfo"
 
 	"google.golang.org/grpc"
