@@ -34,7 +34,7 @@ func patchPodAnnotationUUID(bestGPU string) ([]byte, error) {
 	return json.Marshal(patchAnnotations)
 }
 
-//write GPU_ID to annotation
+// write GPU_ID to annotation
 func patchPodAnnotation(bestGPU string) error {
 	r.KETI_LOG_L1("# write gpu uuid in pod annotation")
 
