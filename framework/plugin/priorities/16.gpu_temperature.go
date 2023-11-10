@@ -40,16 +40,16 @@ func (pl GPUTemperature) Debugg(nodeInfoCache *r.NodeCache) {
 
 func (pl GPUTemperature) Score(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 
-	for _, nodeinfo := range nodeInfoCache.NodeInfoList {
-		if !nodeinfo.PluginResult.IsFiltered {
-			for j, gpu := range nodeinfo.GPUMetrics {
-				if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
-					gpuTemp := gpu.GPUTemperature
-					if gpuTemp > gpu.GPUMaxOperativeTemp {
-						nodeinfo.PluginResult.GPUScores[j].GPUScore = 0
-					}
-				}
-			}
-		}
-	}
+	// for _, nodeinfo := range nodeInfoCache.NodeInfoList {
+	// 	if !nodeinfo.PluginResult.IsFiltered {
+	// 		for j, gpu := range nodeinfo.GPUMetrics {
+	// 			if !nodeinfo.PluginResult.GPUScores[j].IsFiltered {
+	// 				gpuTemp := gpu.GPUTemperature
+	// 				if gpuTemp > gpu.GPUMaxOperativeTemp {
+	// 					nodeinfo.PluginResult.GPUScores[j].GPUScore = 0
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
