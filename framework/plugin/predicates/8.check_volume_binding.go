@@ -40,7 +40,7 @@ func (pl CheckVolumeBinding) Name() string {
 }
 
 func (pl CheckVolumeBinding) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#1. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#1. %s", pl.Name()))
 }
 
 func (pl CheckVolumeBinding) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

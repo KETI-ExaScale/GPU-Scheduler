@@ -5,19 +5,21 @@ package score;
 option go_package = "grpcserver/protos/score";
 
 service MetricGRPC {
-  rpc GetScore(Request) returns (Response); 
+  rpc GetScore(Request) returns (AnalysisScore); 
 }
 
 message Request {
 }
 
-message Response {
-  map<string, Score> message = 1;
+message AnalysisScore {
+  map<string, NodeScore> scores = 1;
 }
 
-message Score{
-  float nodescore = 1;
-  float gpu_temperature = 2;
-  bool memory_available = 3;
-  map<string, float> gpuscore = 4;
+message NodeScore {
+  float node_score = 1;
+  map<string, GPUScore> gpu_scores = 2;
+}
+
+message GPUScore {
+  float gpu_score = 1;
 }

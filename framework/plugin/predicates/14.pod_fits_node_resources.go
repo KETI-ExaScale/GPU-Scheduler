@@ -12,7 +12,7 @@ func (pl PodFitsNodeResources) Name() string {
 }
 
 func (pl PodFitsNodeResources) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#13. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#13. %s", pl.Name()))
 }
 
 func (pl PodFitsNodeResources) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

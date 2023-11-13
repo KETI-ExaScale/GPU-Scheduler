@@ -39,7 +39,7 @@ func NewClusterCache() (*ClusterCache, error) {
 	var clusterInfoList = make(map[string]*ClusterInfo)
 	kubeConfigPath, err := findKubeConfig()
 	if err != nil {
-		KETI_LOG_L3(fmt.Sprintf("<error> findKubeConfig error-%s", err))
+		KETI_LOG_L3(fmt.Sprintf("[error] findKubeConfig error: %s", err))
 		return &ClusterCache{
 			MyClusterName:   "",
 			MyClusterInfo:   myClusterInfo,
@@ -50,7 +50,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 	files, err := ioutil.ReadDir(kubeConfigPath)
 	if err != nil {
-		KETI_LOG_L3(fmt.Sprintf("<error> Read Kubeconfig Path error-%s", err))
+		KETI_LOG_L3(fmt.Sprintf("[error] Read Kubeconfig Path error: %s", err))
 		return &ClusterCache{
 			MyClusterName:   "",
 			MyClusterInfo:   myClusterInfo,
@@ -72,7 +72,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 		kubeConfig, err := clientcmd.LoadFromFile(kubeConfigPath_)
 		if err != nil {
-			KETI_LOG_L3(fmt.Sprintf("<error> load from file error-%s", err))
+			KETI_LOG_L3(fmt.Sprintf("[error] load from file error: %s", err))
 			continue
 		}
 
@@ -90,7 +90,7 @@ func NewClusterCache() (*ClusterCache, error) {
 
 			config, err := clientcmd.BuildConfigFromFlags(cluster.Server, kubeConfigPath_)
 			if err != nil {
-				KETI_LOG_L3(fmt.Sprintf("<error> BuildConfigFromFlags error-%s", err))
+				KETI_LOG_L3(fmt.Sprintf("[error] BuildConfigFromFlags error: %s", err))
 				clusterInfo.Avaliable = false
 				clusterInfoList[name] = clusterInfo
 				filteredCluster = append(filteredCluster, name)
@@ -98,7 +98,7 @@ func NewClusterCache() (*ClusterCache, error) {
 			}
 			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
-				KETI_LOG_L3(fmt.Sprintf("<error> NewForConfig error-%s", err))
+				KETI_LOG_L3(fmt.Sprintf("[error] NewForConfig error: %s", err))
 				clusterInfo.Avaliable = false
 				clusterInfo.Config = config
 				clusterInfoList[name] = clusterInfo

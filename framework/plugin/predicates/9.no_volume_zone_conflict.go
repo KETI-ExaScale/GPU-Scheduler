@@ -40,7 +40,7 @@ func (pl NoVolumeZoneConflict) Name() string {
 }
 
 func (pl NoVolumeZoneConflict) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#9. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#9. %s", pl.Name()))
 }
 
 func (pl NoVolumeZoneConflict) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
@@ -147,7 +147,7 @@ func (pl NoVolumeZoneConflict) Filter(nodeInfoCache *r.NodeCache, newPod *r.Queu
 					nodeV := nodeConstraints[k]
 					volumeVSet, err := volumehelpers.LabelZonesToSet(v)
 					if err != nil {
-						r.KETI_LOG_L1(fmt.Sprintf("Failed to parse label, ignoring the label - label %s:%s / err: %s", k, v, err))
+						r.KETI_LOG_L1(fmt.Sprintf("[error] Failed to parse label, ignoring the label - label %s:%s / err: %s", k, v, err))
 						continue
 					}
 

@@ -12,7 +12,7 @@ func (pl CheckNodeReserved) Name() string {
 }
 
 func (pl CheckNodeReserved) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#14. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#14. %s", pl.Name()))
 }
 
 func (pl CheckNodeReserved) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

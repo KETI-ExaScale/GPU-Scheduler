@@ -5,7 +5,7 @@ metadata:
   namespace: gpu
 data:
   node-gpu-score-weight : "0.3:0.7"
-  nvlink-weight-percentage : "20"
+  nvlink-weight-percentage : "30"
   gpu-allocate-prefer : "binpack"
   node-reservation-permit : "false"
   pod-re-schedule-permit : "false"
@@ -13,5 +13,5 @@ data:
   multi-node-allocation-permit : "false"
   non-gpu-node-prefer : "false"
   multi-gpu-node-prefer : "true"
-  least-score-node-prefer : "true"
-  avoid-high-score-node : "false"
+  least-score-node-prefer : "false"
+  avoid-high-score-node : "true"

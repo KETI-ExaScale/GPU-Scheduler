@@ -14,7 +14,7 @@ func (pl CheckVolumeRestriction) Name() string {
 }
 
 func (pl CheckVolumeRestriction) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#10. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#10. %s", pl.Name()))
 }
 
 func (pl CheckVolumeRestriction) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

@@ -14,7 +14,7 @@ func (pl PodFitsHost) Name() string {
 }
 
 func (pl PodFitsHost) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#1. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#1. %s", pl.Name()))
 }
 
 func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

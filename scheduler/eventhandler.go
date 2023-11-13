@@ -49,10 +49,10 @@ func AddAllEventHandlers(
 						// it's assigned or not. Attempting to cleanup anyways.
 						return true
 					}
-					r.KETI_LOG_L3(fmt.Sprintf("<error> unable to convert object %T to *v1.Pod in %T\n", obj, sched))
+					r.KETI_LOG_L3(fmt.Sprintf("[error] unable to convert object %T to *v1.Pod in %T\n", obj, sched))
 					return false
 				default:
-					r.KETI_LOG_L3(fmt.Sprintf("<error> unable to handle object in %T: %T\n", sched, obj))
+					r.KETI_LOG_L3(fmt.Sprintf("[error] unable to handle object in %T: %T\n", sched, obj))
 					return false
 				}
 			},
@@ -74,7 +74,7 @@ func AddAllEventHandlers(
 				case cache.DeletedFinalStateUnknown:
 					return false
 				default:
-					r.KETI_LOG_L3(fmt.Sprintf("<error> unable to handle object in %T: %T\n", sched, obj))
+					r.KETI_LOG_L3(fmt.Sprintf("[error] unable to handle object in %T: %T\n", sched, obj))
 					return false
 				}
 			},
@@ -96,7 +96,7 @@ func AddAllEventHandlers(
 				case cache.DeletedFinalStateUnknown:
 					return false
 				default:
-					r.KETI_LOG_L3(fmt.Sprintf("<error> unable to handle object in %T: %T\n", sched, obj))
+					r.KETI_LOG_L3(fmt.Sprintf("[error] unable to handle object in %T: %T\n", sched, obj))
 					return false
 				}
 			},
@@ -118,7 +118,7 @@ func AddAllEventHandlers(
 				case cache.DeletedFinalStateUnknown:
 					return false
 				default:
-					r.KETI_LOG_L3(fmt.Sprintf("<error> unable to handle object in %T: %T\n", sched, obj))
+					r.KETI_LOG_L3(fmt.Sprintf("[error] unable to handle object in %T: %T\n", sched, obj))
 					return false
 				}
 			},
@@ -140,7 +140,7 @@ func (sched *GPUScheduler) nodeInfoExist(pod *v1.Pod) bool {
 func (sched *GPUScheduler) addNodeToCache(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> Cannot convert to *v1.Node -> %+v", obj))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] cannot convert to *v1.Node -> %+v", obj))
 		return
 	}
 
@@ -148,11 +148,11 @@ func (sched *GPUScheduler) addNodeToCache(obj interface{}) {
 		return
 	}
 
-	r.KETI_LOG_L2(fmt.Sprintf("Add New Node {%s} To Cache\n", node.Name))
+	r.KETI_LOG_L2(fmt.Sprintf("[event] add new node {%s} to cache\n", node.Name))
 
 	err := sched.NodeInfoCache.AddNode(node)
 	if err != nil {
-		klog.ErrorS(nil, "Cannot Add Node [", node.Name, "]")
+		klog.ErrorS(nil, "cannot add node [", node.Name, "]")
 	}
 
 	// klog.V(3).InfoS("Add event for node", "node", klog.KObj(node))
@@ -163,13 +163,13 @@ func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
 
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
-		klog.ErrorS(nil, "Cannot convert oldObj to *v1.Node", "oldObj", oldObj)
+		klog.ErrorS(nil, "cannot convert oldObj to *v1.Node", "oldObj", oldObj)
 		return
 	}
 
 	newNode, ok := newObj.(*v1.Node)
 	if !ok {
-		klog.ErrorS(nil, "Cannot convert newObj to *v1.Node", "newObj", newObj)
+		klog.ErrorS(nil, "cannot convert newObj to *v1.Node", "newObj", newObj)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
 
 	err := sched.NodeInfoCache.UpdateNode(oldNode, newNode)
 	if err != nil {
-		klog.ErrorS(nil, "Cannot Update Node [", newNode.Name, "]")
+		klog.ErrorS(nil, "cannot Update Node [", newNode.Name, "]")
 	}
 
 	// Only requeue unschedulable pods if the node became more schedulable.
@@ -196,7 +196,7 @@ func (sched *GPUScheduler) updateNodeInCache(oldObj, newObj interface{}) {
 func (sched *GPUScheduler) deleteNodeFromCache(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
-		klog.ErrorS(nil, "Cannot convert newObj to *v1.Node", "newObj", obj)
+		klog.ErrorS(nil, "cannot convert newObj to *v1.Node", "newObj", obj)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (sched *GPUScheduler) deleteNodeFromCache(obj interface{}) {
 	}
 
 	if err := sched.NodeInfoCache.RemoveNode(node); err != nil {
-		klog.ErrorS(err, "Scheduler cache RemoveNode failed")
+		klog.ErrorS(err, "scheduler cache remove node failed")
 	}
 }
 
@@ -228,7 +228,7 @@ func (sched *GPUScheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}
 	}
 
 	if err := sched.SchedulingQueue.Update(oldPod, newPod); err != nil {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> unable to update %T: %v\n", newObj, err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] unable to update %T: %v\n", newObj, err))
 	}
 }
 
@@ -242,11 +242,11 @@ func (sched *GPUScheduler) deletePodFromSchedulingQueue(obj interface{}) {
 		var ok bool
 		pod, ok = t.Obj.(*v1.Pod)
 		if !ok {
-			r.KETI_LOG_L3(fmt.Sprintf("<error> unable to convert object %T to *v1.Pod in %T\n", obj, sched))
+			r.KETI_LOG_L3(fmt.Sprintf("[error] unable to convert object %T to *v1.Pod in %T\n", obj, sched))
 			return
 		}
 	default:
-		r.KETI_LOG_L3(fmt.Sprintf("<error> unable to handle object in %T: %T\n", sched, obj))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] unable to handle object in %T: %T\n", sched, obj))
 		return
 	}
 
@@ -257,7 +257,7 @@ func (sched *GPUScheduler) deletePodFromSchedulingQueue(obj interface{}) {
 	}
 
 	if err := sched.SchedulingQueue.Delete(pod); err != nil {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> unable to dequeue %T: %v\n", obj, err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] unable to dequeue %T: %v\n", obj, err))
 	}
 }
 
@@ -270,7 +270,7 @@ func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 
 		} else if state == r.Pending {
 			pod := obj.(*v1.Pod)
-			r.KETI_LOG_L3(fmt.Sprintf("<error> Pod {%s} State is Pending", pod.Name)) // penging pod cannot add to cache
+			r.KETI_LOG_L3(fmt.Sprintf("[error] pod {%s} state is pending", pod.Name)) // penging pod cannot add to cache
 			return
 		}
 	}
@@ -283,13 +283,13 @@ func (sched *GPUScheduler) addPodToCache(obj interface{}) {
 func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> cannot update pod %s in cache\n", oldPod.Name))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] cannot update pod %s in cache\n", oldPod.Name))
 		return
 	}
 
 	newPod, ok := newObj.(*v1.Pod)
 	if !ok {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> cannot update pod %s in cache\n", oldPod.Name))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] cannot update pod %s in cache\n", oldPod.Name))
 		return
 	}
 
@@ -310,14 +310,14 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 	} else*/if strings.HasPrefix(newPod.Name, "keti-cluster-manager") {
 		// if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("# add node {%s cluster manager", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s cluster manager", newPod.Spec.NodeName))
 			sched.ClusterManagerHost = newPod.Status.PodIP
 			sched.InitClusterManager()
 		}
 		// }
 	} else if strings.HasPrefix(newPod.Name, "keti-analysis-engine") {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("# add node {%s analysis engine", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s analysis engine", newPod.Spec.NodeName))
 			sched.MetricAnalysisModuleIP = newPod.Status.PodIP
 			sched.InitClusterManager()
 		}
@@ -334,16 +334,16 @@ func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
 		var ok bool
 		pod, ok = t.Obj.(*v1.Pod)
 		if !ok {
-			r.KETI_LOG_L3(fmt.Sprintf("Cannot convert to *v1.Pod -> %+v", t.Obj))
+			r.KETI_LOG_L3(fmt.Sprintf("cannot convert to *v1.Pod -> %+v", t.Obj))
 			return
 		}
 	default:
-		r.KETI_LOG_L3(fmt.Sprintf("Cannot convert to *v1.Pod -> %+v", t))
+		r.KETI_LOG_L3(fmt.Sprintf("cannot convert to *v1.Pod -> %+v", t))
 		return
 	}
 
 	if ok, _ := sched.NodeInfoCache.CheckPodStateExist(pod); !ok {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> cannot delete. there isn't pod {%s} state", pod.Name))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] cannot delete. there isn't pod {%s} state", pod.Name))
 		return
 	}
 
@@ -352,9 +352,9 @@ func (sched *GPUScheduler) deletePodFromCache(obj interface{}) {
 	// 	sched.NodeInfoCache.NodeInfoList[pod.Spec.NodeName].MetricCollectorIP = ""
 	// }
 
-	r.KETI_LOG_L1(fmt.Sprintf("# delete pod {%s} from cache\n", pod.Name))
+	r.KETI_LOG_L1(fmt.Sprintf("[event] delete pod {%s} from cache\n", pod.Name))
 	if err := sched.NodeInfoCache.RemovePod(pod); err != nil {
-		klog.ErrorS(err, "<error> Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
+		klog.ErrorS(err, "[error] scheduler cache remove pod failed", "pod", klog.KObj(pod))
 	}
 }
 
@@ -418,7 +418,7 @@ func (sched *GPUScheduler) addPolicyToCache(obj interface{}) {
 func (sched *GPUScheduler) updatePolicyInCache(oldObj, newObj interface{}) {
 	configMap := newObj.(*v1.ConfigMap)
 
-	r.KETI_LOG_L3("\n# Update GPU Scheduler Policy")
+	r.KETI_LOG_L3("\n[event] update gpu-scheduler policy")
 
 	w := strings.Split(configMap.Data["node-gpu-score-weight"], ":")
 	nodeWeight, _ := strconv.ParseFloat(w[0], 64)

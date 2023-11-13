@@ -22,7 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MetricGRPCClient interface {
-	GetScore(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
+	GetScore(ctx context.Context, in *Request, opts ...grpc.CallOption) (*AnalysisScore, error)
 }
 
 type metricGRPCClient struct {
@@ -33,8 +33,8 @@ func NewMetricGRPCClient(cc grpc.ClientConnInterface) MetricGRPCClient {
 	return &metricGRPCClient{cc}
 }
 
-func (c *metricGRPCClient) GetScore(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error) {
-	out := new(Response)
+func (c *metricGRPCClient) GetScore(ctx context.Context, in *Request, opts ...grpc.CallOption) (*AnalysisScore, error) {
+	out := new(AnalysisScore)
 	err := c.cc.Invoke(ctx, "/score.MetricGRPC/GetScore", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (c *metricGRPCClient) GetScore(ctx context.Context, in *Request, opts ...gr
 // All implementations must embed UnimplementedMetricGRPCServer
 // for forward compatibility
 type MetricGRPCServer interface {
-	GetScore(context.Context, *Request) (*Response, error)
+	GetScore(context.Context, *Request) (*AnalysisScore, error)
 	mustEmbedUnimplementedMetricGRPCServer()
 }
 
@@ -54,7 +54,7 @@ type MetricGRPCServer interface {
 type UnimplementedMetricGRPCServer struct {
 }
 
-func (UnimplementedMetricGRPCServer) GetScore(context.Context, *Request) (*Response, error) {
+func (UnimplementedMetricGRPCServer) GetScore(context.Context, *Request) (*AnalysisScore, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetScore not implemented")
 }
 func (UnimplementedMetricGRPCServer) mustEmbedUnimplementedMetricGRPCServer() {}

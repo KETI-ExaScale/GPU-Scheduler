@@ -42,7 +42,7 @@ func (ni *NodeInfo) GetGPUInitInfo(node *corev1.Node) error {
 		ni.NVLinkList = append(ni.NVLinkList, &nvl)
 	}
 
-	for uuid, _ := range res.IndexUuidMap {
+	for uuid := range res.IndexUuidMap {
 		ni.GPU_UUID = append(ni.GPU_UUID, uuid)
 	}
 

@@ -166,13 +166,13 @@ func NewFilterStatus() FilterStatus {
 }
 
 func (pr *PluginResult) FilterNode(node string, status FilterStatus) {
-	KETI_LOG_L1(fmt.Sprintf("# node {%s} filtered, stage = %s", node, status.Stage))
+	KETI_LOG_L1(fmt.Sprintf("[debugg] node {%s} filtered, stage = %s", node, status.Stage))
 	pr.IsFiltered = true
 	pr.FilteredStatus = status
 }
 
 func (gs *GPUScore) FilterGPU(node string, gpu string, status FilterStatus) {
-	KETI_LOG_L1(fmt.Sprintf("# node {%s} - gpu {%s} filtered, stage = %s", node, gpu, status.Stage))
+	KETI_LOG_L1(fmt.Sprintf("[debugg] node {%s} - gpu {%s} filtered, stage = %s", node, gpu, status.Stage))
 	gs.IsFiltered = true
 	gs.FilteredStatus = status
 }
@@ -287,7 +287,6 @@ func NewInitPodInfo() *PodInfo {
 	memoryValue := int64(memoryQuentity.Value())
 	res := &PodResource{cpuMillivalue, memoryValue, 0, 1, 0, 0}
 	// &PodResource{MilliCPU Memory EphemeralStorage GPUCount GPUMemoryLimit GPUMemoryRequest}
-	KETI_LOG_L1(fmt.Sprintf("<test> res: %+v", res))
 	return &PodInfo{
 		Pod:                        nil,
 		RequiredAffinityTerms:      nil,

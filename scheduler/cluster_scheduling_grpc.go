@@ -21,7 +21,7 @@ type InitStruct struct {
 }
 
 func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
-	r.KETI_LOG_L2("# Init My Cluster Manager Called")
+	r.KETI_LOG_L2("[gRPC] Init My Cluster Manager Called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -33,7 +33,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 
 	var requestMessageList []*pb.RequestMessage
 	for _, info := range infoList {
-		r.KETI_LOG_L1(fmt.Sprintf("- Init Info (%s,%d,%d)", info.NodeName, info.Score, info.GPUCount))
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] init info (%s,%d,%d)", info.NodeName, info.Score, info.GPUCount))
 		var requestMessage = &pb.RequestMessage{
 			NodeName:  info.NodeName,
 			NodeScore: info.Score,
@@ -59,7 +59,7 @@ func InitMyClusterManager(ip string, infoList []InitStruct) (bool, error) {
 }
 
 func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, error) {
-	r.KETI_LOG_L2("# Get Best Cluster Called")
+	r.KETI_LOG_L2("[gRPC] get best cluster called")
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
@@ -88,11 +88,11 @@ func GetBestCluster(ip string, gpu int, filtercluster []string) (string, bool, e
 }
 
 func UpdateNodeScore(ip string, node string, score int) (bool, error) {
-	r.KETI_LOG_L1(fmt.Sprintf("# update node score: %s - %d", node, score))
+	r.KETI_LOG_L1(fmt.Sprintf("[gRPC] update node score: %s - %d", node, score))
 	host := ip + ":" + portNumber
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> update node score1 - %s", err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] update node score1: %s", err))
 		return false, err
 	}
 	defer conn.Close()
@@ -109,7 +109,7 @@ func UpdateNodeScore(ip string, node string, score int) (bool, error) {
 	p, err := grpcClient.UpdateMyCluster(ctx, updateClusterMessage)
 	if err != nil {
 		cancel()
-		r.KETI_LOG_L3(fmt.Sprintf("<error> update node score2 - %s", err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] update node score2: %s", err))
 		return false, err
 	}
 

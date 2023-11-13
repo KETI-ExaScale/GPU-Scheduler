@@ -15,7 +15,7 @@ func (pl PodToleratesNodeTaints) Name() string {
 }
 
 func (pl PodToleratesNodeTaints) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#4. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#4. %s", pl.Name()))
 }
 
 func (pl PodToleratesNodeTaints) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

@@ -29,9 +29,9 @@ func (nc *NodeCache) GetAnalysisScore(ip string) error {
 	cancel()
 
 	for nodeName, nodeInfo := range nc.NodeInfoList {
-		nodeInfo.PluginResult.NodeScore = int(res.Message[nodeName].Nodescore)
+		nodeInfo.PluginResult.NodeScore = int(res.Scores[nodeName].NodeScore)
 		for gpuName, gpuScore := range nodeInfo.PluginResult.GPUScores {
-			gpuScore.GPUScore = int(res.Message[nodeName].Gpuscore[gpuName])
+			gpuScore.GPUScore = int(res.Scores[nodeName].GpuScores[gpuName].GpuScore)
 		}
 	}
 

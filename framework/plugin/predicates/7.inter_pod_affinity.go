@@ -50,7 +50,7 @@ func (pl InterPodAffinity) Name() string {
 }
 
 func (pl InterPodAffinity) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#6. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#6. %s", pl.Name()))
 }
 
 func (pl InterPodAffinity) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

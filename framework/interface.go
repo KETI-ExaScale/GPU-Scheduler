@@ -33,28 +33,6 @@ func GPUPodFramework() GPUSchedulerInterface {
 		GPUCountFiltering: []FilterPlugin{
 			predicates.NodeFitsGPUCount{},
 		},
-		// Scoring: []ScorePlugin{
-		// 	priorities.NodeAffinity{},
-		// 	priorities.TaintToleration{},
-		// 	priorities.SelectorSpread_(),
-		// 	priorities.InterPodAffinity{},
-		// 	priorities.PodTopologySpread_(),
-		// 	priorities.ImageLocality{},
-		// 	priorities.BalancedNodeResourceAllocation{},
-		// 	priorities.VolumeBinding{},
-		// 	// priorities.NodeResourcesLeastAllocated{},
-		// 	// priorities.NodeMetricAnalysis{},
-		// 	// priorities.SetGPUFlopsScore{},
-		// 	// priorities.AllocatedPodCountInGPU{},
-		// 	// priorities.GPUUtilization{},
-		// 	// priorities.GPUMemoryUsageSpread{},
-		// 	// priorities.GPUMerticAnalysis{},
-		// 	// priorities.GPUTemperature{},
-		// 	// priorities.GPUPower{},
-		// 	// priorities.GPUBandwidth{},
-		// 	// priorities.GPUDirectStoragePriority{},
-		// 	// priorities.BalancedGPUProcessType{},
-		// },
 	}
 }
 

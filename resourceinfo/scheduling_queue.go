@@ -132,7 +132,7 @@ func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(flushAllPods bool) error {
 		qp := rawPodInfo.(*QueuedPodInfo)
 		_, err := p.BackoffQ.Pop()
 		if err != nil {
-			KETI_LOG_L3(fmt.Sprintf("Unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
+			KETI_LOG_L3(fmt.Sprintf("[error] unable to pop pod from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
 		}
 
@@ -190,7 +190,8 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 		} else if qp.Status.Code == Error {
 			boTime = qp.Timestamp.Add(ErrorDuration)
 		} else {
-			KETI_LOG_L3(fmt.Sprintf("QueuePodInfo unknown status :%d {%s}", qp.Status.Code, qp.Pod.Name))
+			KETI_LOG_L3(fmt.Sprintf("[error] queuePodInfo unknown status: %d {%s}", qp.Status.Code, qp.Pod.Name))
+			return
 		}
 
 		if !boTime.Before(time.Now()) {
@@ -199,7 +200,7 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 
 		_, err := p.BackoffQ.Pop()
 		if err != nil {
-			KETI_LOG_L3(fmt.Sprintf("Unable to pop from backoff queue despite backoff completion {%s}", qp.Pod.Name))
+			KETI_LOG_L3(fmt.Sprintf("[error] unable to pop from backoff queue despite backoff completion {%s}", qp.Pod.Name))
 			break
 		}
 
@@ -352,7 +353,7 @@ func podsCompareBackoffCompleted(podInfo1, podInfo2 interface{}) bool {
 
 func (p *PriorityQueue) PrintActiveQ() {
 	items := p.activeQ.List()
-	KETI_LOG_L1("<test> active queue\n")
+	KETI_LOG_L1("[debugg] active queue\n")
 	for i := 0; i < len(items); i++ {
 		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, attempt: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
 	}
@@ -360,7 +361,7 @@ func (p *PriorityQueue) PrintActiveQ() {
 
 func (p *PriorityQueue) PrintBackoffQ() {
 	items := p.BackoffQ.List()
-	KETI_LOG_L1("<test> backoff queue\n")
+	KETI_LOG_L1("[debugg] backoff queue\n")
 	for i := 0; i < len(items); i++ {
 		KETI_LOG_L1(fmt.Sprintf("%d) name: %s, priority: %d, attempt: %d, score: %d", i, items[i].(*QueuedPodInfo).Pod.Name, items[i].(*QueuedPodInfo).UserPriority, items[i].(*QueuedPodInfo).Attempts, items[i].(*QueuedPodInfo).PriorityScore))
 	}

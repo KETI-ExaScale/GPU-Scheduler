@@ -12,7 +12,7 @@ func (pl MatchNodeSelector) Name() string {
 }
 
 func (pl MatchNodeSelector) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("F#7. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#7. %s", pl.Name()))
 }
 
 // func (pl MatchNodeSelector) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

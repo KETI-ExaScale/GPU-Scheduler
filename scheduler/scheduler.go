@@ -38,7 +38,7 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 	if err != nil {
 		//내 클러스터에는 배포 가능한 노드가 없음(노드를 가져올 수 없음)
 		//다른 클러스터엔 가능할수도
-		r.KETI_LOG_L3(fmt.Sprintf("<error> cannot find any node in cluster!-%s", err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] cannot find any node in cluster!-%s", err))
 	}
 	fwk := framework.GPUPodFramework()
 	sr := r.NewScheduleResult()
@@ -50,12 +50,12 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 	}
 
 	if err != nil {
-		r.KETI_LOG_L3("<error> kubeconfig error / scheduling is only available to my cluster")
+		r.KETI_LOG_L3("[warning] kubeconfig error / scheduling is only available to my cluster")
 		//내 클러스터에만 배포 가능
 	} else {
 		cmhost = findClusterManagerHost(hostKubeClient)
 		if cmhost == "" {
-			r.KETI_LOG_L2("# cannot find cluster-manager in cluster / scheduling is only available to my cluster")
+			r.KETI_LOG_L2("[warning] cannot find cluster-manager in cluster / scheduling is only available to my cluster")
 			//내 클러스터에만 배포 가능
 		}
 	}
@@ -117,7 +117,7 @@ func NewSchedulingPolicy() *SchedulingPolicy {
 func (sched *GPUScheduler) NextPod() *r.QueuedPodInfo {
 	newPod, err := sched.SchedulingQueue.Pop()
 	if err != nil {
-		r.KETI_LOG_L3(fmt.Sprintf("<error> Get NextPod Error : %s", err))
+		r.KETI_LOG_L3(fmt.Sprintf("[error] Get NextPod Error : %s", err))
 		return nil
 	}
 
@@ -144,7 +144,7 @@ func (sched *GPUScheduler) InitClusterManager() error {
 
 	sched.InitScore() //score init
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
-		r.KETI_LOG_L3("<error> there isn't node to schedule")
+		r.KETI_LOG_L3("[error] there isn't node to schedule")
 		return nil
 	}
 
@@ -178,7 +178,7 @@ func calcInitNodeScore(nodeInfo *r.NodeInfo, nodeWeight float64, gpuWeight float
 	}
 	gpuScore = gpuScore / cnt
 	totalScore := nodeScore*nodeWeight + gpuScore*gpuWeight
-	r.KETI_LOG_L1(fmt.Sprintf("<test> nodescore:%.3f, gpuscore:%.3f, totalscore:%.3f", nodeScore, gpuScore, totalScore))
+	r.KETI_LOG_L1(fmt.Sprintf("[debugg] nodescore:%.3f, gpuscore:%.3f, totalscore:%.3f", nodeScore, gpuScore, totalScore))
 	return int64(totalScore)
 }
 
