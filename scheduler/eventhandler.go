@@ -413,6 +413,10 @@ func (sched *GPUScheduler) addPolicyToCache(obj interface{}) {
 	r.KETI_LOG_L3(fmt.Sprintf("[policy 11] %s", r.Policy11))
 	r.KETI_LOG_L3(fmt.Sprintf("  - value : %v", avoidHighScoreNode))
 
+	//추가 희망 메트릭
+	//gpu-filtering-temperature
+	//activate-gpu-count-filtering
+
 }
 
 func (sched *GPUScheduler) updatePolicyInCache(oldObj, newObj interface{}) {

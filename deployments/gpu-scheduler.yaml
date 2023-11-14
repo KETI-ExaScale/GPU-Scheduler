@@ -19,6 +19,7 @@ spec:
       serviceAccountName: scheduler
       imagePullSecrets:
         - name: regcred
+      restartPolicy: Always
       containers:
         - name: gpu-schedule
           image: ketidevit2/keti-gpu-scheduler:v1.0
@@ -49,3 +50,23 @@ spec:
         - name: config
           hostPath:
             path: /root/.kube
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-scheduler-configmap
+  namespace: gpu
+data:
+  node-gpu-score-weight : "0.4:0.6"
+  nvlink-weight-percentage : "10"
+  gpu-allocate-prefer : "spread"
+  node-reservation-permit : "false"
+  pod-re-schedule-permit : "true"
+  avoid-nvlink-one-gpu : "false"
+  multi-node-allocation-permit : "false"
+  non-gpu-node-prefer : "false"
+  multi-gpu-node-prefer : "true"
+  least-score-node-prefer : "false"
+  avoid-high-score-node : "false"
+  
+  

@@ -18,10 +18,6 @@ func (pl PodFitsHost) Debugg() {
 }
 
 func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
-	if len(newPod.Pod.Spec.NodeName) == 0 {
-		return
-	}
-
 	for nodeName, nodeinfo := range nodeInfoCache.NodeInfoList {
 		if !nodeinfo.PluginResult.IsFiltered {
 			if !Fits(newPod.Pod, nodeName) {
@@ -36,9 +32,9 @@ func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 
 // Fits actually checks if the pod fits the node.
 func Fits(pod *v1.Pod, nodeName string) bool {
-	clusterName := pod.Annotations["clusterName"]
+	targetNode := pod.Annotations["nodeName"]
 
-	if clusterName != "" && clusterName != nodeName {
+	if targetNode != "" && targetNode != nodeName {
 		return false
 	}
 	return true
