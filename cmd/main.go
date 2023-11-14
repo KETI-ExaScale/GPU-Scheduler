@@ -66,7 +66,7 @@ func main() {
 	for {
 		select {
 		case <-signalChan:
-			r.KETI_LOG_L3(fmt.Sprint("[signal] shitdown signal received, exiting..."))
+			r.KETI_LOG_L3(fmt.Sprint("[signal] shutdown signal received, exiting..."))
 			close(quitChan)
 			cancel()
 			wg.Wait()
