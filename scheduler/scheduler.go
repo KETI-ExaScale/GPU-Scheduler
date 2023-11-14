@@ -42,23 +42,23 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 	}
 	fwk := framework.GPUPodFramework()
 	sr := r.NewScheduleResult()
-	cc, err := r.NewClusterCache()
-	cmhost := ""
+	// cc, err := r.NewClusterCache()
+	// cmhost := ""
 
-	if r.GPU_SCHEDUER_DEBUGG_LEVEL == r.LEVEL1 {
-		cc.DumpClusterInfo()
-	}
+	// if r.GPU_SCHEDUER_DEBUGG_LEVEL == r.LEVEL1 {
+	// 	cc.DumpClusterInfo()
+	// }
 
-	if err != nil {
-		r.KETI_LOG_L3("[warning] kubeconfig error / scheduling is only available to my cluster")
-		//내 클러스터에만 배포 가능
-	} else {
-		cmhost = findClusterManagerHost(hostKubeClient)
-		if cmhost == "" {
-			r.KETI_LOG_L2("[warning] cannot find cluster-manager in cluster / scheduling is only available to my cluster")
-			//내 클러스터에만 배포 가능
-		}
-	}
+	// if err != nil {
+	// 	r.KETI_LOG_L3("[warning] kubeconfig error / scheduling is only available to my cluster")
+	// 	//내 클러스터에만 배포 가능
+	// } else {
+	// 	cmhost = findClusterManagerHost(hostKubeClient)
+	// 	if cmhost == "" {
+	// 		r.KETI_LOG_L2("[warning] cannot find cluster-manager in cluster / scheduling is only available to my cluster")
+	// 		//내 클러스터에만 배포 가능
+	// 	}
+	// }
 
 	ma := GetMetricAnalysisModuleIP(hostKubeClient) //예외처리 필요
 
@@ -69,9 +69,9 @@ func NewGPUScheduler(hostKubeClient *kubernetes.Clientset) (*GPUScheduler, error
 		NewPod:                  nil,
 		Framework:               fwk,
 		ScheduleResult:          sr,
-		ClusterInfoCache:        cc,
+		ClusterInfoCache:        &r.ClusterCache{}, //임시
 		MetricAnalysisModuleIP:  ma,
-		ClusterManagerHost:      cmhost,
+		ClusterManagerHost:      "", //임시
 		AvailableClusterManager: false,
 	}, nil
 }

@@ -36,5 +36,10 @@ func (pl PodFitsHost) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo
 
 // Fits actually checks if the pod fits the node.
 func Fits(pod *v1.Pod, nodeName string) bool {
-	return len(pod.Spec.NodeName) == 0 || pod.Spec.NodeName == nodeName
+	clusterName := pod.Annotations["clusterName"]
+
+	if clusterName != "" && clusterName != nodeName {
+		return false
+	}
+	return true
 }
