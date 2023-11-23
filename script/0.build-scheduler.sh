@@ -8,7 +8,7 @@ dir=$( pwd )
 #go mod init scheduler
 #go mod vendor
 #go mod tidy
-
+#khg
 #gpu-scheduler binary file
 # go build -a --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo . && \
 go build -o $dir/../build/_output/bin/$image_name -mod=vendor $dir/../cmd/main.go
