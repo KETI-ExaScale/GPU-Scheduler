@@ -187,6 +187,7 @@ func GetMetricAnalysisModuleIP(hostKubeClient *kubernetes.Clientset) string {
 
 	for _, pod := range pods.Items {
 		if strings.HasPrefix(pod.Name, "keti-analysis-engine") && pod.Status.Phase == "Running" {
+			fmt.Println("Analysis Pod IP: ", pod.Status.PodIP)
 			return pod.Status.PodIP
 		}
 	}

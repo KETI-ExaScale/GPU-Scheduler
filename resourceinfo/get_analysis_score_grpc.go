@@ -2,6 +2,7 @@ package resourceinfo
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pb "gpu-scheduler/proto/score"
@@ -12,6 +13,7 @@ import (
 
 func (nc *NodeCache) GetAnalysisScore(ip string) error {
 	host := ip + ":9322"
+	fmt.Println("analysis engine host", host)
 	conn, err := grpc.Dial(host, grpc.WithInsecure())
 	if err != nil {
 		return err
@@ -28,11 +30,22 @@ func (nc *NodeCache) GetAnalysisScore(ip string) error {
 
 	cancel()
 
+	fmt.Println("Receive data:", nc.NodeInfoList)
+
 	for nodeName, nodeInfo := range nc.NodeInfoList {
-		nodeInfo.PluginResult.NodeScore = int(res.Scores[nodeName].NodeScore)
-		for gpuName, gpuScore := range nodeInfo.PluginResult.GPUScores {
-			gpuScore.GPUScore = int(res.Scores[nodeName].GpuScores[gpuName].GpuScore)
+		if resNodeScore, nodeExist := res.Scores[nodeName]; nodeExist {
+			nodeInfo.PluginResult.NodeScore = int(resNodeScore.NodeScore)
+			for gpuName, gpuScore := range nodeInfo.PluginResult.GPUScores {
+				if resGPUScore, gpuExist := resNodeScore.GpuScores[gpuName]; gpuExist {
+					gpuScore.GPUScore = int(resGPUScore.GpuScore)
+				} else {
+					gpuScore.IsFiltered = true
+				}
+			}
+		} else {
+			nodeInfo.PluginResult.IsFiltered = true
 		}
+
 	}
 
 	return nil

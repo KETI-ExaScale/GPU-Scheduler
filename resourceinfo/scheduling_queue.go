@@ -190,7 +190,7 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 		} else if qp.Status.Code == Error {
 			boTime = qp.Timestamp.Add(ErrorDuration)
 		} else {
-			KETI_LOG_L3(fmt.Sprintf("[error] queuePodInfo unknown status: %d {%s}", qp.Status.Code, qp.Pod.Name))
+			// KETI_LOG_L3(fmt.Sprintf("[error] queuePodInfo unknown status: %d {%s}", qp.Status.Code, qp.Pod.Name))
 			return
 		}
 
