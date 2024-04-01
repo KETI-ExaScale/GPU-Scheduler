@@ -4,7 +4,7 @@ metadata:
   name: gpu-scheduler-policy
   namespace: gpu
 data:
-  node-gpu-score-weight : "0.3:0.7"
+  node-gpu-score-weight : "0.4:0.6"
   nvlink-weight-percentage : "30"
   gpu-allocate-prefer : "binpack"
   node-reservation-permit : "false"
@@ -14,4 +14,4 @@ data:
   non-gpu-node-prefer : "false"
   multi-gpu-node-prefer : "true"
   least-score-node-prefer : "false"
-  avoid-high-score-node : "true"
+  avoid-high-score-node : "false"

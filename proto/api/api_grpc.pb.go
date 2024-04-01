@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v4.22.2
-// source: proto/api/api.proto
+// source: api/api.proto
 
 package api
 
@@ -101,5 +101,5 @@ var Traveler_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/api/api.proto",
+	Metadata: "api/api.proto",
 }

@@ -34,6 +34,7 @@ func (nc *NodeCache) GetAnalysisScore(ip string) error {
 			for gpuName, gpuScore := range nodeInfo.PluginResult.GPUScores {
 				if resGPUScore, gpuExist := resNodeScore.GpuScores[gpuName]; gpuExist {
 					gpuScore.GPUScore = int(resGPUScore.GpuScore)
+					gpuScore.PodCount = int(resGPUScore.PodCount)
 				} else {
 					gpuScore.IsFiltered = true
 				}

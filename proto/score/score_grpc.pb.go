@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v4.22.2
-// source: proto/score/score.proto
+// source: score/score.proto
 
 package score
 
@@ -101,5 +101,5 @@ var MetricGRPC_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/score/score.proto",
+	Metadata: "score/score.proto",
 }

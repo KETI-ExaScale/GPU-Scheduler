@@ -22,4 +22,5 @@ message NodeScore {
 
 message GPUScore {
   float gpu_score = 1;
+  int32 pod_count = 2;
 }

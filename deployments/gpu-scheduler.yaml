@@ -28,8 +28,8 @@ spec:
           volumeMounts:
             - name: tz-config
               mountPath: /etc/localtime
-            - name: gpu-scheduler-configmap
-              mountPath: /gpu-scheduler-configmap
+            - name: gpu-scheduler-policy
+              mountPath: /gpu-scheduler-policy
             - name: config
               mountPath: /root/.kube/  
           resources:
@@ -39,14 +39,14 @@ spec:
               memory: "200Mi"
           env:
           - name: DEBUGG_LEVEL
-            value: "LEVEL1"
+            value: "LEVEL2"
       volumes:
         - name: tz-config
           hostPath:
             path: /usr/share/zoneinfo/Asia/Seoul
-        - name: gpu-scheduler-configmap
+        - name: gpu-scheduler-policy
           configMap:
-            name: gpu-scheduler-configmap
+            name: gpu-scheduler-policy
         - name: config
           hostPath:
             path: /root/.kube

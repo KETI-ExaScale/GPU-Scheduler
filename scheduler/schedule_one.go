@@ -380,12 +380,12 @@ func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int)
 
 	if sched.NewPod.IsGPUPod && nodeinfo.PluginResult.AvailableGPUCount == 0 {
 		score.TotalScore = int(math.Round(float64(score.NodeScore) * 0.1))
-		r.KETI_LOG_L2(fmt.Sprintf("[debugg] total score(node score * 0.1) = %d * 0.1 = %d", score.NodeScore, score.TotalScore))
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] total score(node score * 0.1) = %d * 0.1 = %d", score.NodeScore, score.TotalScore))
 	} else {
 		score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
 			float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
 
-		r.KETI_LOG_L2(fmt.Sprintf("[debugg] total score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] total score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
 			sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore))
 	}
 }
@@ -400,8 +400,14 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 
 	if requestedGPU == 1 && sched.SchedulingPolicy.AvoidNVLinkOneGPU {
 		for _, nvlink := range nodeinfo.NVLinkList {
-			score.GPUScores[nvlink.GPU1].GPUScore = int(float32(score.GPUScores[nvlink.GPU1].GPUScore) * 0.9)
-			score.GPUScores[nvlink.GPU2].GPUScore = int(float32(score.GPUScores[nvlink.GPU2].GPUScore) * 0.9)
+			score.GPUScores[nvlink.GPU1].GPUScore = int(float32(score.GPUScores[nvlink.GPU1].GPUScore) * 0.3)
+			score.GPUScores[nvlink.GPU2].GPUScore = int(float32(score.GPUScores[nvlink.GPU2].GPUScore) * 0.3)
+		}
+	}
+
+	if sched.SchedulingPolicy.GPUAllocatePrefer == "binpack" {
+		for _, gpuScore := range score.GPUScores {
+			gpuScore.GPUScore += gpuScore.PodCount * 100
 		}
 	}
 
@@ -411,39 +417,22 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 	for _, d := range score.GPUScores {
 		sortedGPUScore = append(sortedGPUScore, d)
 	}
-	sort.SliceStable(sortedGPUScore, func(i, j int) bool {
-		return sortedGPUScore[i].GPUScore > sortedGPUScore[j].GPUScore
-	})
-
-	for _, a := range sortedGPUScore {
-		r.KETI_LOG_L1(fmt.Sprintf("[debugg] %s | %d | %v", a.UUID, a.GPUScore, a.IsFiltered))
-	}
 
 	//NVLink GPU 고려 X
 	if requestedGPU == 1 || nodeinfo.NVLinkList == nil {
-		if sched.SchedulingPolicy.GPUAllocatePrefer == "spread" {
-			bestGPUScore := sortedGPUScore[:requestedGPU] //스코어 점수 상위 N개의 GPU
+		bestGPUScore := sortedGPUScore[:requestedGPU] //스코어 점수 상위 N개의 GPU
 
-			for _, gpu := range bestGPUScore {
-				totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
-				bestGPU += gpu.UUID + ","
-			}
+		sort.SliceStable(sortedGPUScore, func(i, j int) bool {
+			return sortedGPUScore[i].GPUScore > sortedGPUScore[j].GPUScore
+		})
 
-			score.TotalGPUScore = int(math.Round(totalGPUScore))
-			score.BestGPU = strings.Trim(bestGPU, ",")
-		} else /*binpack*/ {
-			start := len(sortedGPUScore) - requestedGPU
-			end := len(sortedGPUScore)
-			bestGPUScore := sortedGPUScore[start:end] //스코어 점수 하위 N개의 GPU
-
-			for _, gpu := range bestGPUScore {
-				totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
-				bestGPU += gpu.UUID + ","
-			}
-
-			score.TotalGPUScore = int(math.Round(totalGPUScore))
-			score.BestGPU = strings.Trim(bestGPU, ",")
+		for _, gpu := range bestGPUScore {
+			totalGPUScore += float64(gpu.GPUScore) * float64(1/float64(requestedGPU))
+			bestGPU += gpu.UUID + ","
 		}
+
+		score.TotalGPUScore = int(math.Round(totalGPUScore))
+		score.BestGPU = strings.Trim(bestGPU, ",")
 
 		return
 	}
@@ -503,7 +492,6 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 				}
 				if len(high_gpu) == 2 {
 					high_score /= 2
-					// fmt.Println("***", high_score)
 					break
 				}
 			}

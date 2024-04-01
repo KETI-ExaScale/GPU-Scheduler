@@ -94,6 +94,7 @@ type GPUScore struct {
 	IsFiltered     bool
 	FilteredStatus FilterStatus
 	GPUScore       int
+	PodCount       int
 	IsSelected     bool
 }
 
@@ -144,6 +145,7 @@ func NewGPUScore(uuid string) *GPUScore {
 		IsFiltered:     false,
 		FilteredStatus: NewFilterStatus(),
 		GPUScore:       MinScore,
+		PodCount:       0,
 		IsSelected:     false,
 	}
 }
