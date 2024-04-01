@@ -114,7 +114,7 @@ func AddAllEventHandlers(
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.ConfigMap:
-					return (t.ObjectMeta.Name == "gpu-scheduler-configmap")
+					return (t.ObjectMeta.Name == "gpu-scheduler-policy")
 				case cache.DeletedFinalStateUnknown:
 					return false
 				default:
@@ -310,14 +310,14 @@ func (sched *GPUScheduler) updatePodInCache(oldObj, newObj interface{}) {
 	} else*/if strings.HasPrefix(newPod.Name, "keti-cluster-manager") {
 		// if sched.ClusterManagerHost == "" || !sched.AvailableClusterManager {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s cluster manager", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s} cluster manager", newPod.Spec.NodeName))
 			sched.ClusterManagerHost = newPod.Status.PodIP
 			sched.InitClusterManager()
 		}
 		// }
 	} else if strings.HasPrefix(newPod.Name, "keti-analysis-engine") {
 		if oldPod.Status.PodIP != newPod.Status.PodIP {
-			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s analysis engine", newPod.Spec.NodeName))
+			r.KETI_LOG_L2(fmt.Sprintf("[event] add node {%s} analysis engine", newPod.Spec.NodeName))
 			sched.MetricAnalysisModuleIP = newPod.Status.PodIP
 			sched.InitClusterManager()
 		}

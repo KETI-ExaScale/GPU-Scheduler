@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nbody-benchmark-gamma
+  namespace: userpod
+spec:
+  template:
+    metadata:
+      annotations:
+        # clusterName: keti-gpu-cluster1
+        priority: I
+        # clusterScheduling: "false"
+    spec:
+      hostIPC: true
+      schedulerName: gpu-scheduler
+      containers:
+        - image: seedjeffwan/nbody:cuda-10.1
+          name: nbody1
+          args:
+            - nbody
+            - -benchmark
+            - -numdevices=1
+            - -numbodies=198200
+          resources:
+            limits:
+              keti.com/mpsgpu: 2
+              cpu: "250m"
+              memory: "6400Mi"
+          volumeMounts:
+            - name: nvidia-mps
+              mountPath: /tmp/nvidia-mps 
+      volumes:
+        - name: nvidia-mps
+          hostPath:
+            path: /tmp/nvidia-mps
+      restartPolicy: Never

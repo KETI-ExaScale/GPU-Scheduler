@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-benchmark-alpha
+  namespace: userpod
+spec:
+  template:
+    metadata:
+      annotations:
+        priority: L
+    spec:
+      hostIPC: true
+      schedulerName: gpu-scheduler
+      containers:
+        - image: 4pdosc/ai-benchmark:2.4.1-gpu
+          name: main
+          resources:
+            limits:
+              keti.com/mpsgpu: 1
+              cpu: "250m"
+              memory: "6400Mi"
+            requests:
+              cpu: "250m"
+          volumeMounts:
+            - name: nvidia-mps
+              mountPath: /tmp/nvidia-mps 
+      volumes:
+        - name: nvidia-mps
+          hostPath:
+            path: /tmp/nvidia-mps
+      restartPolicy: OnFailure

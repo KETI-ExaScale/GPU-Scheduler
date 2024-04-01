@@ -290,10 +290,10 @@ func (sched *GPUScheduler) schedulePod() error {
 	r.KETI_LOG_L3("[scheduling] STEP 2. run filtering plugins")
 	sched.Framework.RunNodeFilteringPlugins(sched.NodeInfoCache, sched.NewPod)
 
-	if sched.SchedulingPolicy.NonGPUNodePrefer /*sched.SchedulingPolicy.GPUFilteringTemperature*/ {
-		sched.Framework.RunGPUCountFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
-		// 	sched.Framework.RunGPUTemperatureFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
-	}
+	// if sched.SchedulingPolicy.NonGPUNodePrefer /*sched.SchedulingPolicy.GPUFilteringTemperature*/ {
+	// 	sched.Framework.RunGPUCountFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
+	// 	// 	sched.Framework.RunGPUTemperatureFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
+	// }
 	sched.Framework.RunGPUCountFilteringPlugin(sched.NodeInfoCache, sched.NewPod)
 	if sched.NodeInfoCache.AvailableNodeCount == 0 {
 		return fmt.Errorf("filtered all nodes")

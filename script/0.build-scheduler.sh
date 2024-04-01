@@ -1,6 +1,6 @@
 registry="ketidevit2"
 image_name="keti-gpu-scheduler"
-version="v1.1"
+version="v2.0"
 dir=$( pwd )
 
 #latest golang

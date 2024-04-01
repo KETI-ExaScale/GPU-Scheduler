@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler
+  namespace: gpu
+  labels:
+    component: gpu-scheduler
+    app: gpu-scheduler
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  ports:
+  - port: 8888
+    targetPort: 8888
+    name: server
+  selector:
+    component: gpu-scheduler
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scheduler
+  namespace: gpu
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: scheduler
+  namespace: gpu
+subjects:
+- kind: ServiceAccount
+  name: scheduler
+  namespace: gpu
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-scheduler-configmap
+  namespace: gpu
+data:
+  node-gpu-score-weight : "0.4:0.6"
+  nvlink-weight-percentage : "10"
+  gpu-allocate-prefer : "spread"
+  node-reservation-permit : "false"
+  pod-re-schedule-permit : "true"
+  avoid-nvlink-one-gpu : "false"
+  multi-node-allocation-permit : "false"
+  non-gpu-node-prefer : "true"
+  multi-gpu-node-prefer : "true"
+  least-score-node-prefer : "false"
+  avoid-high-score-node : "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: gpu-scheduler
+  name: keti-gpu-scheduler
+  namespace: gpu
+spec:
+  selector:
+    matchLabels:
+      app: gpu-scheduler
+  template:
+    metadata:
+      labels:
+        app: gpu-scheduler
+      name: gpu-scheduler
+    spec:
+      nodeName: c1-master
+      serviceAccountName: scheduler
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: gpu-schedule
+          image: ketidevit2/keti-gpu-scheduler:v2.0
+          # args:
+          #   - --debugging=on
+          volumeMounts:
+            - name: tz-config
+              mountPath: /etc/localtime
+            - name: gpu-scheduler-configmap
+              mountPath: /gpu-scheduler-configmap
+            - name: config
+              mountPath: /root/.kube/  
+          resources:
+            limits:
+              memory: "200Mi"
+            requests:
+              memory: "200Mi"
+          env:
+          - name: DEBUGG_LEVEL
+            value: "LEVEL1"
+      volumes:
+        - name: tz-config
+          hostPath:
+            path: /usr/share/zoneinfo/Asia/Seoul
+        - name: gpu-scheduler-configmap
+          configMap:
+            name: gpu-scheduler-configmap
+        - name: config
+          hostPath:
+            path: /root/.kube
+
+  

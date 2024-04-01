@@ -72,7 +72,7 @@ func (sf GPUSchedulerFramework) RunGPUTemperatureFilteringPlugin(nodeInfoCache *
 
 func (sf GPUSchedulerFramework) RunGPUCountFilteringPlugin(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {
 	sf.GPUCountFiltering[0].Debugg()
-	sf.GPUTemperatureFiltering[0].Filter(nodeInfoCache, newPod)
+	sf.GPUCountFiltering[0].Filter(nodeInfoCache, newPod)
 	if nodeInfoCache.AvailableNodeCount == 0 {
 		return
 	}

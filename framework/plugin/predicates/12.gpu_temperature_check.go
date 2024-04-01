@@ -8,11 +8,11 @@ import (
 type CheckGPUTemperature struct{}
 
 func (pl CheckGPUTemperature) Name() string {
-	return "NodeFitsGPUMemory"
+	return "CheckGPUTemperature"
 }
 
 func (pl CheckGPUTemperature) Debugg() {
-	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#12. %s", pl.Name()))
+	r.KETI_LOG_L2(fmt.Sprintf("[stage] F#13. %s", pl.Name()))
 }
 
 func (pl CheckGPUTemperature) Filter(nodeInfoCache *r.NodeCache, newPod *r.QueuedPodInfo) {

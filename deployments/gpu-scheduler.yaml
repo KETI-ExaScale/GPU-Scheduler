@@ -22,7 +22,7 @@ spec:
       restartPolicy: Always
       containers:
         - name: gpu-schedule
-          image: ketidevit2/keti-gpu-scheduler:v1.0
+          image: ketidevit2/keti-gpu-scheduler:v2.0
           # args:
           #   - --debugging=on
           volumeMounts:
@@ -39,7 +39,7 @@ spec:
               memory: "200Mi"
           env:
           - name: DEBUGG_LEVEL
-            value: "LEVEL3"
+            value: "LEVEL1"
       volumes:
         - name: tz-config
           hostPath:

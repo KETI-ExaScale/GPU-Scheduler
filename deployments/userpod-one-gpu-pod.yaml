@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: exa-metric-nbody-1
+  namespace: userpod
+spec:
+  template:
+    metadata:
+      annotations:
+        priority: L
+    spec:
+      hostIPC: true
+      schedulerName: gpu-scheduler
+      containers:
+        - image: seedjeffwan/nbody:cuda-10.1
+          name: nbody1
+          args:
+            - nbody
+            - -benchmark
+            - -numdevices=1
+            - -numbodies=1982000
+          resources:
+            limits:
+              keti.com/mpsgpu: 1
+          volumeMounts:
+            - name: nvidia-mps
+              mountPath: /tmp/nvidia-mps 
+      volumes:
+        - name: nvidia-mps
+          hostPath:
+            path: /tmp/nvidia-mps
+      restartPolicy: OnFailure
