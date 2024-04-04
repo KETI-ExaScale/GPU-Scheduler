@@ -2,6 +2,7 @@ package resourceinfo
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pb "gpu-scheduler/proto/score"
@@ -31,10 +32,12 @@ func (nc *NodeCache) GetAnalysisScore(ip string) error {
 	for nodeName, nodeInfo := range nc.NodeInfoList {
 		if resNodeScore, nodeExist := res.Scores[nodeName]; nodeExist {
 			nodeInfo.PluginResult.NodeScore = int(resNodeScore.NodeScore)
+			KETI_LOG_L1(fmt.Sprintf("# node {%s} score: %f", nodeName, resNodeScore.NodeScore))
 			for gpuName, gpuScore := range nodeInfo.PluginResult.GPUScores {
 				if resGPUScore, gpuExist := resNodeScore.GpuScores[gpuName]; gpuExist {
 					gpuScore.GPUScore = int(resGPUScore.GpuScore)
 					gpuScore.PodCount = int(resGPUScore.PodCount)
+					KETI_LOG_L1(fmt.Sprintf("- gpu {%s} score: %f", gpuName, resGPUScore.GpuScore))
 				} else {
 					gpuScore.IsFiltered = true
 				}
@@ -42,7 +45,6 @@ func (nc *NodeCache) GetAnalysisScore(ip string) error {
 		} else {
 			nodeInfo.PluginResult.IsFiltered = true
 		}
-
 	}
 
 	return nil
