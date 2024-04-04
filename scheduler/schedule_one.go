@@ -359,43 +359,61 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 	// r.KETI_LOG_L3(fmt.Sprintf("(policy 10) %s : %v ", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer))
 	// r.KETI_LOG_L3(fmt.Sprintf("(policy 11) %s : %v ", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode))
 
-	fmt.Printf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
+	fmt.Printf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK\n", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
 	fmt.Printf("(policy 2) %s : %v ", r.Policy2, sched.SchedulingPolicy.NVLinkWeightPercentage)
 	if sched.SchedulingPolicy.NVLinkWeightPercentage != 0 {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
-	fmt.Printf("(policy 3) %s : %v --> OK", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer)
+	fmt.Printf("(policy 3) %s : %v --> OK\n", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer)
 	fmt.Printf("(policy 4) %s : %v ", r.Policy4, sched.SchedulingPolicy.NodeReservationPermit)
 	if sched.SchedulingPolicy.NodeReservationPermit {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 5) %s : %v ", r.Policy5, sched.SchedulingPolicy.PodReSchedulePermit)
 	if sched.SchedulingPolicy.PodReSchedulePermit {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 6) %s : %v ", r.Policy6, sched.SchedulingPolicy.AvoidNVLinkOneGPU)
 	if sched.SchedulingPolicy.AvoidNVLinkOneGPU {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 7) %s : %v ", r.Policy7, sched.SchedulingPolicy.MultiNodeAllocationPermit)
 	if sched.SchedulingPolicy.MultiNodeAllocationPermit {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 8) %s : %v ", r.Policy8, sched.SchedulingPolicy.NonGPUNodePrefer)
 	if sched.SchedulingPolicy.NonGPUNodePrefer {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 9) %s : %v ", r.Policy9, sched.SchedulingPolicy.MultiGPUNodePrefer)
 	if sched.SchedulingPolicy.MultiGPUNodePrefer {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 10) %s : %v ", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer)
 	if sched.SchedulingPolicy.LeastScoreNodePrefer {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 	fmt.Printf("(policy 11) %s : %v ", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode)
 	if sched.SchedulingPolicy.AvoidHighScoreNode {
 		fmt.Println(" --> OK")
+	} else {
+		fmt.Println()
 	}
 
 	r.KETI_LOG_L3(fmt.Sprintf("[scheduling] scheduling result: best node = %s", sched.ScheduleResult.BestNode))
