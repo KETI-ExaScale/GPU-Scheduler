@@ -4,12 +4,12 @@ metadata:
   name: gpu-scheduler-policy
   namespace: gpu
 data:
-  node-gpu-score-weight : "0.4:0.6"
-  nvlink-weight-percentage : "30"
+  node-gpu-score-weight : "0.5:0.5"
+  nvlink-weight-percentage : "0"
   gpu-allocate-prefer : "binpack"
   node-reservation-permit : "false"
   pod-re-schedule-permit : "false"
-  avoid-nvlink-one-gpu : "false"
+  avoid-nvlink-one-gpu : "true"
   multi-node-allocation-permit : "false"
   non-gpu-node-prefer : "false"
   multi-gpu-node-prefer : "true"

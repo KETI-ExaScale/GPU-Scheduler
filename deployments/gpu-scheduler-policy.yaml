@@ -5,7 +5,7 @@ metadata:
   namespace: gpu
 data:
   node-gpu-score-weight : "0.5:0.5"
-  nvlink-weight-percentage : "30"
+  nvlink-weight-percentage : "0"
   gpu-allocate-prefer : "spread"
   node-reservation-permit : "false"
   pod-re-schedule-permit : "false"

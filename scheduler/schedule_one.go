@@ -310,7 +310,7 @@ func (sched *GPUScheduler) schedulePod() error {
 }
 
 func (sched *GPUScheduler) GetBestNodeAndGPU() {
-	r.KETI_LOG_L3("[scheduling] STEP 4. get best node/gpu")
+	r.KETI_LOG_L3("[scheduling] STEP 4. calculate best node/gpu")
 	var scoreRate []string
 
 	for nodeName, nodeInfo := range sched.NodeInfoCache.NodeInfoList {
@@ -347,17 +347,56 @@ func (sched *GPUScheduler) GetBestNodeAndGPU() {
 	sched.ScheduleResult.BestGPU = sched.NodeInfoCache.NodeInfoList[selectedNodeName].PluginResult.BestGPU
 	sched.ScheduleResult.TotalScore = sched.NodeInfoCache.NodeInfoList[selectedNodeName].PluginResult.TotalScore
 
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 2) %s : %v --> OK", r.Policy2, sched.SchedulingPolicy.NVLinkWeightPercentage))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 3) %s : %v --> OK", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 4) %s : %v --> OK", r.Policy4, sched.SchedulingPolicy.NodeReservationPermit))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 5) %s : %v --> OK", r.Policy5, sched.SchedulingPolicy.PodReSchedulePermit))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 6) %s : %v --> OK", r.Policy6, sched.SchedulingPolicy.AvoidNVLinkOneGPU))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 7) %s : %v --> OK", r.Policy7, sched.SchedulingPolicy.MultiNodeAllocationPermit))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 8) %s : %v --> OK", r.Policy8, sched.SchedulingPolicy.NonGPUNodePrefer))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 9) %s : %v --> OK", r.Policy9, sched.SchedulingPolicy.MultiGPUNodePrefer))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 10) %s : %v --> OK", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer))
-	r.KETI_LOG_L3(fmt.Sprintf("(policy 11) %s : %v --> OK", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 2) %s : %v ", r.Policy2, sched.SchedulingPolicy.NVLinkWeightPercentage))
+	// fmt.Sprintf("(policy 3) %s : %v ", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 4) %s : %v ", r.Policy4, sched.SchedulingPolicy.NodeReservationPermit))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 5) %s : %v ", r.Policy5, sched.SchedulingPolicy.PodReSchedulePermit))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 6) %s : %v ", r.Policy6, sched.SchedulingPolicy.AvoidNVLinkOneGPU))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 7) %s : %v ", r.Policy7, sched.SchedulingPolicy.MultiNodeAllocationPermit))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 8) %s : %v ", r.Policy8, sched.SchedulingPolicy.NonGPUNodePrefer))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 9) %s : %v ", r.Policy9, sched.SchedulingPolicy.MultiGPUNodePrefer))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 10) %s : %v ", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer))
+	// r.KETI_LOG_L3(fmt.Sprintf("(policy 11) %s : %v ", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode))
+
+	fmt.Printf("(policy 1) %s : nodeWeight=%.1f, gpuWeight=%.1f --> OK", r.Policy1, sched.SchedulingPolicy.NodeWeight, sched.SchedulingPolicy.GPUWeight)
+	fmt.Printf("(policy 2) %s : %v ", r.Policy2, sched.SchedulingPolicy.NVLinkWeightPercentage)
+	if sched.SchedulingPolicy.NVLinkWeightPercentage != 0 {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 3) %s : %v --> OK", r.Policy3, sched.SchedulingPolicy.GPUAllocatePrefer)
+	fmt.Printf("(policy 4) %s : %v ", r.Policy4, sched.SchedulingPolicy.NodeReservationPermit)
+	if sched.SchedulingPolicy.NodeReservationPermit {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 5) %s : %v ", r.Policy5, sched.SchedulingPolicy.PodReSchedulePermit)
+	if sched.SchedulingPolicy.PodReSchedulePermit {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 6) %s : %v ", r.Policy6, sched.SchedulingPolicy.AvoidNVLinkOneGPU)
+	if sched.SchedulingPolicy.AvoidNVLinkOneGPU {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 7) %s : %v ", r.Policy7, sched.SchedulingPolicy.MultiNodeAllocationPermit)
+	if sched.SchedulingPolicy.MultiNodeAllocationPermit {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 8) %s : %v ", r.Policy8, sched.SchedulingPolicy.NonGPUNodePrefer)
+	if sched.SchedulingPolicy.NonGPUNodePrefer {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 9) %s : %v ", r.Policy9, sched.SchedulingPolicy.MultiGPUNodePrefer)
+	if sched.SchedulingPolicy.MultiGPUNodePrefer {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 10) %s : %v ", r.Policy10, sched.SchedulingPolicy.LeastScoreNodePrefer)
+	if sched.SchedulingPolicy.LeastScoreNodePrefer {
+		fmt.Println(" --> OK")
+	}
+	fmt.Printf("(policy 11) %s : %v ", r.Policy11, sched.SchedulingPolicy.AvoidHighScoreNode)
+	if sched.SchedulingPolicy.AvoidHighScoreNode {
+		fmt.Println(" --> OK")
+	}
 
 	r.KETI_LOG_L3(fmt.Sprintf("[scheduling] scheduling result: best node = %s", sched.ScheduleResult.BestNode))
 
@@ -375,6 +414,7 @@ func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int)
 	}
 	if sched.SchedulingPolicy.MultiGPUNodePrefer {
 		score.TotalScore = score.NodeScore * (10 + nodeinfo.PluginResult.AvailableGPUCount) / 10
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#9 :: %d * %d / 10 = %d", score.NodeScore, (10 + nodeinfo.PluginResult.AvailableGPUCount), score.TotalScore))
 	}
 	sched.getTotalGPUScore(nodeinfo, requestedGPU)
 
@@ -385,7 +425,7 @@ func (sched *GPUScheduler) getTotalScore(nodeinfo *r.NodeInfo, requestedGPU int)
 		score.TotalScore = int(math.Round(float64(score.NodeScore)*sched.SchedulingPolicy.NodeWeight +
 			float64(score.TotalGPUScore)*sched.SchedulingPolicy.GPUWeight))
 
-		r.KETI_LOG_L1(fmt.Sprintf("[debugg] total score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#1 :: total score(nodeScore * nodeWeight + gpuScore * gpuWeight) = %d * %.1f + %d * %.1f = %d", score.NodeScore,
 			sched.SchedulingPolicy.NodeWeight, score.TotalGPUScore, sched.SchedulingPolicy.GPUWeight, score.TotalScore))
 	}
 }
@@ -402,12 +442,16 @@ func (sched *GPUScheduler) getTotalGPUScore(nodeinfo *r.NodeInfo, requestedGPU i
 		for _, nvlink := range nodeinfo.NVLinkList {
 			score.GPUScores[nvlink.GPU1].GPUScore = int(float32(score.GPUScores[nvlink.GPU1].GPUScore) * 0.3)
 			score.GPUScores[nvlink.GPU2].GPUScore = int(float32(score.GPUScores[nvlink.GPU2].GPUScore) * 0.3)
+			r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#6 :: gpu {%s} score * 0.3 = %d", nvlink.GPU1, score.GPUScores[nvlink.GPU1].GPUScore))
+			r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#6 :: gpu {%s} score * 0.3 = %d", nvlink.GPU2, score.GPUScores[nvlink.GPU2].GPUScore))
 		}
 	}
 
 	if sched.SchedulingPolicy.GPUAllocatePrefer == "binpack" {
 		for _, gpuScore := range score.GPUScores {
-			gpuScore.GPUScore += gpuScore.PodCount * 100
+			score := gpuScore.GPUScore + gpuScore.PodCount*100
+			r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#3 = binpack :: %d + %d * 100 = %d", gpuScore.GPUScore, gpuScore.PodCount, score))
+			gpuScore.GPUScore = score
 		}
 	}
 
@@ -527,11 +571,10 @@ func (sched *GPUScheduler) checkNVLinkGPU(nodeinfo *r.NodeInfo) {
 			nvl.IsFiltered = true
 			continue
 		}
-		score := float64(nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore+
-			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
+		score := float64(nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore+nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore) / 2
 		nvl.Score = int(math.Round(score * float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100)))
-		// r.KETI_LOG_L3(fmt.Sprintf("- linked gpu{%s}:gpu{%s} score = (%d+%d) / 2 * %.2f = %d",
-		// 	nvl.GPU1, nvl.GPU2, nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore,
-		// 	nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score))
+		r.KETI_LOG_L1(fmt.Sprintf("[debugg] policy#2 :: linked gpu{%s}:gpu{%s} score = (%d+%d) / 2 * %.2f = %d",
+			nvl.GPU1, nvl.GPU2, nodeinfo.PluginResult.GPUScores[nvl.GPU1].GPUScore,
+			nodeinfo.PluginResult.GPUScores[nvl.GPU2].GPUScore, float64(1+float64(sched.SchedulingPolicy.NVLinkWeightPercentage)/100), nvl.Score))
 	}
 }

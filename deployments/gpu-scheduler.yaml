@@ -39,7 +39,7 @@ spec:
               memory: "200Mi"
           env:
           - name: DEBUGG_LEVEL
-            value: "LEVEL2"
+            value: "LEVEL1"
       volumes:
         - name: tz-config
           hostPath:
